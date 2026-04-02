@@ -586,30 +586,18 @@ func main() {
 		log.Printf("Tailscale network detected and active\n")
 	}
 
-	// Serve static files based on mode
-	if *multiHost {
-		// Multi-host mode: serve host selector
-		http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-			if r.URL.Path == "/" {
-				http.ServeFile(w, r, "./public/host-manager.html")
-			} else {
-				http.FileServer(http.Dir("./public")).ServeHTTP(w, r)
-			}
-		})
-
-		// API endpoint for host discovery
-		if *exposeHosts {
-			http.HandleFunc("/api/discover", makeDiscoverHostsHandler(*port))
+	// SPA: Always serve index.html for root, static files for everything else
+	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/" {
+			http.ServeFile(w, r, "./public/index.html")
+		} else {
+			http.FileServer(http.Dir("./public")).ServeHTTP(w, r)
 		}
-	} else {
-		// Single-host mode: serve normal interface with ?host=auto
-		http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-			if r.URL.Path == "/" && r.URL.RawQuery == "" {
-				http.Redirect(w, r, "/?host=auto", http.StatusFound)
-			} else {
-				http.FileServer(http.Dir("./public")).ServeHTTP(w, r)
-			}
-		})
+	})
+
+	// API endpoint for host discovery (if enabled)
+	if *exposeHosts {
+		http.HandleFunc("/api/discover", makeDiscoverHostsHandler(*port))
 	}
 
 	// WebSocket endpoint
@@ -618,8 +606,10 @@ func main() {
 	// Config endpoint
 	http.HandleFunc("/api/config", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]string{
+		json.NewEncoder(w).Encode(map[string]interface{}{
 			"defaultSession": *defaultSession,
+			"multiHost":      *multiHost,
+			"exposeHosts":    *exposeHosts,
 		})
 	})
 

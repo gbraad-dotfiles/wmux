@@ -2,52 +2,60 @@
 // Load font size from localStorage or use default
 const savedFontSize = parseInt(localStorage.getItem('wmux_font_size')) || 13;
 
-const term = new Terminal({
-    cursorBlink: true,
-    cursorStyle: 'block',
-    fontSize: savedFontSize,
-    fontFamily: '"Sauce Code Pro Nerd Font", "Source Code Pro", "Sauce Code Pro", Monaco, Menlo, Consolas, monospace',
-    theme: {
-        background: '#000000',
-        foreground: '#ffffff',
-        cursor: '#00FF00',
-        cursorAccent: '#000000',
-        selection: '#3a3a3a',
-        black: '#000000',
-        red: '#CF1A37',
-        green: '#00FF00',
-        yellow: '#ffff00',
-        blue: '#0066FF',
-        magenta: '#ff00ff',
-        cyan: '#00ffff',
-        white: '#ffffff'
-    },
-    allowProposedApi: true,
-    scrollback: 10000,
-    disableStdin: false,
-    convertEol: false,
-    windowsMode: false,
-    altClickMovesCursor: false,
-    screenReaderMode: false
-});
+let term = null;
+let fitAddon = null;
+let webLinksAddon = null;
 
-const fitAddon = new FitAddon.FitAddon();
-const webLinksAddon = new WebLinksAddon.WebLinksAddon();
+function initTerminal() {
+    term = new Terminal({
+        cursorBlink: true,
+        cursorStyle: 'block',
+        fontSize: savedFontSize,
+        fontFamily: '"Sauce Code Pro Nerd Font", "Source Code Pro", "Sauce Code Pro", Monaco, Menlo, Consolas, monospace',
+        theme: {
+            background: '#000000',
+            foreground: '#ffffff',
+            cursor: '#00FF00',
+            cursorAccent: '#000000',
+            selection: '#3a3a3a',
+            black: '#000000',
+            red: '#CF1A37',
+            green: '#00FF00',
+            yellow: '#ffff00',
+            blue: '#0066FF',
+            magenta: '#ff00ff',
+            cyan: '#00ffff',
+            white: '#ffffff'
+        },
+        allowProposedApi: true,
+        scrollback: 10000,
+        disableStdin: false,
+        convertEol: false,
+        windowsMode: false,
+        altClickMovesCursor: false,
+        screenReaderMode: false
+    });
 
-term.loadAddon(fitAddon);
-term.loadAddon(webLinksAddon);
+    fitAddon = new FitAddon.FitAddon();
+    webLinksAddon = new WebLinksAddon.WebLinksAddon();
 
-term.open(document.getElementById('terminal'));
+    term.loadAddon(fitAddon);
+    term.loadAddon(webLinksAddon);
 
-// Clipboard support - Copy
-term.onSelectionChange(() => {
-    const selection = term.getSelection();
-    if (selection) {
-        navigator.clipboard.writeText(selection).catch(err => {
-            console.log('Copy failed:', err);
-        });
-    }
-});
+    term.open(document.getElementById('terminal'));
+}
+
+function setupClipboardSupport() {
+    // Clipboard support - Copy
+    term.onSelectionChange(() => {
+        const selection = term.getSelection();
+        if (selection) {
+            navigator.clipboard.writeText(selection).catch(err => {
+                console.log('Copy failed:', err);
+            });
+        }
+    });
+}
 
 // Clipboard support - Paste
 async function pasteFromClipboard() {
@@ -73,141 +81,193 @@ async function pasteFromClipboard() {
     }
 }
 
-// Desktop paste support (Ctrl+V)
-document.addEventListener('paste', async (e) => {
-    if (sessionActive) {
-        e.preventDefault();
-        await pasteFromClipboard();
-    }
-});
+function setupEventListeners() {
+    // Desktop paste support (Ctrl+V)
+    document.addEventListener('paste', async (e) => {
+        if (sessionActive) {
+            e.preventDefault();
+            await pasteFromClipboard();
+        }
+    });
 
-// Desktop keyboard shortcuts
-document.addEventListener('keydown', async (e) => {
-    // Ctrl+Shift+V or Cmd+Shift+V for paste
-    if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'V') {
-        e.preventDefault();
-        console.log('Ctrl+Shift+V detected');
-        await pasteFromClipboard();
-    }
-    // Shift+Insert for paste (traditional terminal shortcut)
-    if (e.shiftKey && e.key === 'Insert') {
-        e.preventDefault();
-        console.log('Shift+Insert detected');
-        await pasteFromClipboard();
-    }
-    // Ctrl+Insert for copy (traditional terminal shortcut)
-    if (e.ctrlKey && e.key === 'Insert') {
-        e.preventDefault();
-        const selection = term.getSelection();
-        if (selection) {
-            try {
-                await navigator.clipboard.writeText(selection);
-                console.log('Copied via Ctrl+Insert');
-            } catch (err) {
-                console.error('Copy failed:', err);
+    // Desktop keyboard shortcuts
+    document.addEventListener('keydown', async (e) => {
+        // Ctrl+Shift+V or Cmd+Shift+V for paste
+        if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'V') {
+            e.preventDefault();
+            console.log('Ctrl+Shift+V detected');
+            await pasteFromClipboard();
+        }
+        // Shift+Insert for paste (traditional terminal shortcut)
+        if (e.shiftKey && e.key === 'Insert') {
+            e.preventDefault();
+            console.log('Shift+Insert detected');
+            await pasteFromClipboard();
+        }
+        // Ctrl+Insert for copy (traditional terminal shortcut)
+        if (e.ctrlKey && e.key === 'Insert') {
+            e.preventDefault();
+            const selection = term.getSelection();
+            if (selection) {
+                try {
+                    await navigator.clipboard.writeText(selection);
+                    console.log('Copied via Ctrl+Insert');
+                } catch (err) {
+                    console.error('Copy failed:', err);
+                }
             }
         }
+    });
+
+    // Handle terminal input
+    term.onData((data) => {
+        if (connected && sessionActive) {
+            send({
+                type: 'input',
+                data: btoa(data)
+            });
+        }
+    });
+
+    // Handle terminal resize
+    let resizeTimeout;
+    function handleResize() {
+        clearTimeout(resizeTimeout);
+        resizeTimeout = setTimeout(() => {
+            setActualVH(); // Update viewport height first
+            fitAddon.fit(); // Then recalculate terminal dimensions
+            updateDebugInfo();
+            if (connected && sessionActive) {
+                console.log(`Terminal dimensions - cols: ${term.cols}, rows: ${term.rows}`);
+                send({
+                    type: 'resize',
+                    rows: term.rows,
+                    cols: term.cols
+                });
+            }
+        }, 100);
     }
-});
+
+    window.addEventListener('resize', handleResize);
+
+    // Handle mobile viewport changes (address bar hide/show)
+    if (window.visualViewport) {
+        window.visualViewport.addEventListener('resize', handleResize);
+        window.visualViewport.addEventListener('scroll', () => {
+            setActualVH();
+            // Don't resize terminal on scroll, just update available height
+        });
+    }
+}
 
 // Mobile keyboard handling
 let keyboardMode = false;
 const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-const keyboardToggle = document.getElementById('keyboard-toggle');
-const terminalElement = document.querySelector('.xterm');
 let terminalTextarea = null;
 
-// Show keyboard toggle and paste buttons on mobile
-const pasteToggle = document.getElementById('paste-toggle');
-if (isMobile) {
+function setupMobileKeyboard() {
+    const keyboardToggle = document.getElementById('keyboard-toggle');
+    const pasteToggle = document.getElementById('paste-toggle');
+    const terminalElement = document.querySelector('.xterm');
+
+    // Show keyboard toggle and paste buttons on mobile
+    if (isMobile) {
+        if (keyboardToggle) {
+            keyboardToggle.style.display = 'block';
+        }
+        if (pasteToggle) {
+            pasteToggle.style.display = 'block';
+        }
+    }
+
+    // Function to enable/disable keyboard input
+    function setKeyboardMode(enabled) {
+        keyboardMode = enabled;
+
+        if (!terminalTextarea) {
+            terminalTextarea = document.querySelector('.xterm textarea');
+        }
+
+        if (terminalTextarea) {
+            // Always disable Android keyboard interference
+            terminalTextarea.setAttribute('autocomplete', 'off');
+            terminalTextarea.setAttribute('autocorrect', 'off');
+            terminalTextarea.setAttribute('autocapitalize', 'off');
+            terminalTextarea.setAttribute('spellcheck', 'false');
+
+            if (enabled) {
+                // Enable keyboard
+                terminalTextarea.removeAttribute('readonly');
+                terminalTextarea.removeAttribute('inputmode');
+                terminalTextarea.style.opacity = '1';
+                terminalTextarea.style.pointerEvents = 'auto';
+                terminalTextarea.focus();
+                if (keyboardToggle) {
+                    keyboardToggle.style.background = '#00FF00';
+                    keyboardToggle.textContent = 'ON';
+                }
+            } else {
+                // Disable keyboard (mouse mode)
+                terminalTextarea.setAttribute('readonly', 'readonly');
+                terminalTextarea.setAttribute('inputmode', 'none');
+                terminalTextarea.style.opacity = '0';
+                terminalTextarea.style.pointerEvents = 'none';
+                terminalTextarea.blur();
+                if (keyboardToggle) {
+                    keyboardToggle.style.background = 'var(--accent)';
+                    keyboardToggle.textContent = 'KB';
+                }
+            }
+        }
+    }
+
+    // Keyboard toggle button
     if (keyboardToggle) {
-        keyboardToggle.style.display = 'block';
+        keyboardToggle.addEventListener('click', () => {
+            setKeyboardMode(!keyboardMode);
+        });
     }
+
+    // Paste button
     if (pasteToggle) {
-        pasteToggle.style.display = 'block';
-    }
-}
-
-// Function to enable/disable keyboard input
-function setKeyboardMode(enabled) {
-    keyboardMode = enabled;
-
-    if (!terminalTextarea) {
-        terminalTextarea = document.querySelector('.xterm textarea');
+        pasteToggle.addEventListener('click', async () => {
+            await pasteFromClipboard();
+        });
     }
 
-    if (terminalTextarea) {
-        // Always disable Android keyboard interference
-        terminalTextarea.setAttribute('autocomplete', 'off');
-        terminalTextarea.setAttribute('autocorrect', 'off');
-        terminalTextarea.setAttribute('autocapitalize', 'off');
-        terminalTextarea.setAttribute('spellcheck', 'false');
-
-        if (enabled) {
-            // Enable keyboard
-            terminalTextarea.removeAttribute('readonly');
-            terminalTextarea.removeAttribute('inputmode');
-            terminalTextarea.style.opacity = '1';
-            terminalTextarea.style.pointerEvents = 'auto';
-            terminalTextarea.focus();
-            if (keyboardToggle) {
-                keyboardToggle.style.background = '#00FF00';
-                keyboardToggle.textContent = 'ON';
-            }
-        } else {
-            // Disable keyboard (mouse mode)
-            terminalTextarea.setAttribute('readonly', 'readonly');
-            terminalTextarea.setAttribute('inputmode', 'none');
-            terminalTextarea.style.opacity = '0';
-            terminalTextarea.style.pointerEvents = 'none';
-            terminalTextarea.blur();
-            if (keyboardToggle) {
-                keyboardToggle.style.background = 'var(--accent)';
-                keyboardToggle.textContent = 'KB';
+    // Watch for textarea creation and initially disable keyboard
+    const observer = new MutationObserver(() => {
+        if (!terminalTextarea) {
+            terminalTextarea = document.querySelector('.xterm textarea');
+            if (terminalTextarea && isMobile) {
+                setKeyboardMode(false); // Start in mouse mode on mobile
             }
         }
+    });
+
+    if (terminalElement) {
+        observer.observe(terminalElement, { childList: true, subtree: true });
     }
-}
 
-// Keyboard toggle button
-if (keyboardToggle) {
-    keyboardToggle.addEventListener('click', () => {
-        setKeyboardMode(!keyboardMode);
-    });
-}
-
-// Paste button
-if (pasteToggle) {
-    pasteToggle.addEventListener('click', async () => {
-        await pasteFromClipboard();
-    });
-}
-
-// Watch for textarea creation and initially disable keyboard
-const observer = new MutationObserver(() => {
-    if (!terminalTextarea) {
-        terminalTextarea = document.querySelector('.xterm textarea');
-        if (terminalTextarea && isMobile) {
-            setKeyboardMode(false); // Start in mouse mode on mobile
-        }
+    // Auto-disable keyboard mode after 30 seconds of no typing
+    let keyboardTimeout;
+    if (isMobile) {
+        document.addEventListener('input', () => {
+            if (keyboardMode) {
+                clearTimeout(keyboardTimeout);
+                keyboardTimeout = setTimeout(() => {
+                    setKeyboardMode(false);
+                }, 30000);
+            }
+        });
     }
-});
 
-if (terminalElement) {
-    observer.observe(terminalElement, { childList: true, subtree: true });
-}
-
-// Auto-disable keyboard mode after 30 seconds of no typing
-let keyboardTimeout;
-if (isMobile) {
-    document.addEventListener('input', () => {
-        if (keyboardMode) {
-            clearTimeout(keyboardTimeout);
-            keyboardTimeout = setTimeout(() => {
-                setKeyboardMode(false);
-            }, 30000);
-        }
-    });
+    // Set initial keyboard mode on mobile after a short delay
+    if (isMobile) {
+        setTimeout(() => {
+            setKeyboardMode(false);
+        }, 500);
+    }
 }
 
 // WebSocket connection
@@ -227,25 +287,46 @@ function setActualVH() {
     document.documentElement.style.setProperty('--vh', `${vh}px`);
 }
 
-// Set on load and when viewport changes
-setActualVH();
-window.addEventListener('resize', setActualVH);
-if (window.visualViewport) {
-    window.visualViewport.addEventListener('resize', setActualVH);
-}
+function setupViewport() {
+    // Set on load and when viewport changes
+    setActualVH();
+    window.addEventListener('resize', setActualVH);
+    if (window.visualViewport) {
+        window.visualViewport.addEventListener('resize', setActualVH);
+    }
 
-// Initial fit after setting viewport
-fitAddon.fit();
+    // Multiple fitting attempts to ensure proper sizing in SPA
+    const performFit = (attempt = 1) => {
+        setActualVH();
+        fitAddon.fit();
+        console.log(`Terminal fit attempt ${attempt} - cols: ${term.cols}, rows: ${term.rows}`);
+    };
 
-// Set initial keyboard mode on mobile after a short delay (wait for textarea to be created)
-if (isMobile) {
-    setTimeout(() => {
-        setKeyboardMode(false);
-    }, 500);
+    // Use requestAnimationFrame to ensure DOM is rendered before fitting
+    requestAnimationFrame(() => {
+        performFit(1);
+
+        // Second attempt after short delay
+        setTimeout(() => {
+            performFit(2);
+        }, 100);
+
+        // Third attempt after longer delay (for SPA view switching)
+        setTimeout(() => {
+            performFit(3);
+        }, 300);
+
+        // Final attempt
+        setTimeout(() => {
+            performFit(4);
+        }, 500);
+    });
 }
 
 // Update debug info
 function updateDebugInfo() {
+    if (!term) return; // Terminal not initialized yet
+
     const debugEl = document.getElementById('debug-info');
     if (debugEl) {
         const container = document.getElementById('terminal-container');
@@ -283,9 +364,14 @@ Status: ${sessionActive ? 'Active' : 'Idle'}`;
     }
 }
 
-// Update debug info periodically and on events
-setInterval(updateDebugInfo, 1000);
-updateDebugInfo();
+// Update debug info periodically and on events - only start when terminal is initialized
+let debugUpdateInterval = null;
+function startDebugUpdates() {
+    if (!debugUpdateInterval) {
+        debugUpdateInterval = setInterval(updateDebugInfo, 1000);
+        updateDebugInfo();
+    }
+}
 
 function updateStatus(text, isConnected = false) {
     const statusEl = document.getElementById('status');
@@ -403,11 +489,23 @@ function connect() {
         updateStatus('Ready', true);
         reconnectAttempts = 0; // Reset on successful connection
 
+        // Mark mode as detected (connection successful)
+        if (sessionStorage.getItem('wmux_mode_detected') === 'trying') {
+            sessionStorage.setItem('wmux_mode_detected', 'done');
+        }
+
         // If we had a session before disconnecting, inform user
         const lastSession = localStorage.getItem('wmux_last_session');
         if (lastSession && reconnectAttempts > 0) {
             term.write(`\x1b[32mReconnected! Last session: ${lastSession}\x1b[0m\r\n`);
         }
+
+        // Force terminal resize when WebSocket opens (for SPA initial load)
+        setTimeout(() => {
+            setActualVH();
+            fitAddon.fit();
+            console.log(`Terminal fit on WebSocket open - cols: ${term.cols}, rows: ${term.rows}`);
+        }, 100);
     };
 
     ws.onmessage = (event) => {
@@ -545,8 +643,14 @@ function connect() {
 
         if (reconnectAttempts === 0 && !hostParam && sessionStorage.getItem('wmux_mode_detected') === 'trying') {
             sessionStorage.removeItem('wmux_mode_detected');
-            console.log('No local wmux server detected, redirecting to host manager');
-            window.location.href = '/host-manager.html';
+            console.log('No local wmux server detected');
+
+            // In SPA mode, show host selector; otherwise redirect
+            if (window.spaMode && typeof window.showView === 'function') {
+                window.showView('host-selector');
+            } else {
+                window.location.href = '/host-manager.html';
+            }
             return;
         }
 
@@ -579,45 +683,6 @@ function send(msg) {
     }
 }
 
-// Handle terminal input
-term.onData((data) => {
-    if (connected && sessionActive) {
-        send({
-            type: 'input',
-            data: btoa(data)
-        });
-    }
-});
-
-// Handle terminal resize
-let resizeTimeout;
-function handleResize() {
-    clearTimeout(resizeTimeout);
-    resizeTimeout = setTimeout(() => {
-        setActualVH(); // Update viewport height first
-        fitAddon.fit(); // Then recalculate terminal dimensions
-        updateDebugInfo();
-        if (connected && sessionActive) {
-            console.log(`Terminal dimensions - cols: ${term.cols}, rows: ${term.rows}`);
-            send({
-                type: 'resize',
-                rows: term.rows,
-                cols: term.cols
-            });
-        }
-    }, 100);
-}
-
-window.addEventListener('resize', handleResize);
-
-// Handle mobile viewport changes (address bar hide/show)
-if (window.visualViewport) {
-    window.visualViewport.addEventListener('resize', handleResize);
-    window.visualViewport.addEventListener('scroll', () => {
-        setActualVH();
-        // Don't resize terminal on scroll, just update available height
-    });
-}
 
 // Menu toggle
 const menuBtn = document.getElementById('menu-btn');
@@ -794,6 +859,14 @@ if (appsBtn) {
         loadApps();
         appsDialog.classList.add('active');
         appsOverlay.classList.add('active');
+
+        // Clear search and auto-focus
+        setTimeout(() => {
+            if (appSearch) {
+                appSearch.value = '';
+                appSearch.focus();
+            }
+        }, 100);
     });
 }
 
@@ -811,14 +884,71 @@ if (appsOverlay) {
     });
 }
 
+// Fuzzy search function with scoring
+function fuzzyMatch(query, text) {
+    if (!query) return { match: true, score: 0 };
+    if (!text) return { match: false, score: -1 };
+
+    query = query.toLowerCase();
+    text = text.toLowerCase();
+
+    // Exact match
+    if (text === query) return { match: true, score: 1000 };
+
+    // Contains match
+    if (text.includes(query)) {
+        const score = text.startsWith(query) ? 500 : 100;
+        return { match: true, score };
+    }
+
+    // Character-by-character fuzzy matching
+    let queryIdx = 0;
+    let lastMatchIdx = -1;
+    let score = 50;
+
+    for (let i = 0; i < text.length && queryIdx < query.length; i++) {
+        if (text[i] === query[queryIdx]) {
+            // Bonus for consecutive matches
+            if (lastMatchIdx === i - 1) {
+                score += 5;
+            }
+            lastMatchIdx = i;
+            queryIdx++;
+        }
+    }
+
+    if (queryIdx === query.length) {
+        return { match: true, score };
+    }
+
+    return { match: false, score: -1 };
+}
+
 if (appSearch) {
     appSearch.addEventListener('input', (e) => {
-        const query = e.target.value.toLowerCase();
-        const filtered = appsCache.filter(app =>
-            app.name.toLowerCase().includes(query) ||
-            (app.title && app.title.toLowerCase().includes(query))
-        );
-        renderApps(filtered);
+        const query = e.target.value;
+
+        if (!query) {
+            renderApps(appsCache);
+            return;
+        }
+
+        // Fuzzy search with scoring
+        const results = appsCache.map(app => {
+            const nameMatch = fuzzyMatch(query, app.name);
+            const titleMatch = fuzzyMatch(query, app.title || '');
+            const bestScore = Math.max(nameMatch.score, titleMatch.score);
+
+            return {
+                app,
+                match: nameMatch.match || titleMatch.match,
+                score: bestScore
+            };
+        }).filter(r => r.match)
+          .sort((a, b) => b.score - a.score)
+          .map(r => r.app);
+
+        renderApps(results);
     });
 }
 
@@ -1003,6 +1133,9 @@ document.getElementById('reconnect-btn').addEventListener('click', () => {
         ws = null;
     }
 
+    // Mark that mode has already been detected (don't trigger host selector on failure)
+    sessionStorage.setItem('wmux_mode_detected', 'done');
+
     // Reset reconnect counter and connect
     reconnectAttempts = 0;
     term.write('\r\n\x1b[36mManual reconnect initiated...\x1b[0m\r\n');
@@ -1109,5 +1242,33 @@ if (debugToggle && debugSection) {
     });
 }
 
-// Connect on load
-connect();
+// Main initialization function for SPA
+function initApp() {
+    if (!term) {
+        initTerminal();
+        setupClipboardSupport();
+        setupMobileKeyboard();
+        setupViewport();
+        setupEventListeners();
+        startDebugUpdates();
+    }
+    connect();
+}
+
+// For backwards compatibility and SPA routing
+if (typeof window.initTerminalView === 'undefined') {
+    window.initTerminalView = initApp;
+}
+
+// Auto-init if not in SPA mode (connect.html)
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => {
+        if (document.getElementById('terminal') && !window.spaMode) {
+            initApp();
+        }
+    });
+} else {
+    if (document.getElementById('terminal') && !window.spaMode) {
+        initApp();
+    }
+}
