@@ -90,25 +90,29 @@ function setupEventListeners() {
         }
     });
 
-    // Desktop keyboard shortcuts
-    document.addEventListener('keydown', async (e) => {
+    // Desktop keyboard shortcuts - use capture phase to intercept before terminal
+    window.addEventListener('keydown', async (e) => {
         // Check if apps dialog is handling this event
         if (handleAppsKeydown(e)) {
+            e.stopPropagation();
             return;
         }
 
         // Check if windows dialog is handling this event
         if (handleWindowsKeydown(e)) {
+            e.stopPropagation();
             return;
         }
 
         // Check if sessions dialog is handling this event
         if (handleSessionsKeydown(e)) {
+            e.stopPropagation();
             return;
         }
 
         // Check if panes dialog is handling this event
         if (handlePanesKeydown(e)) {
+            e.stopPropagation();
             return;
         }
 
@@ -152,55 +156,97 @@ function setupEventListeners() {
         // Don't intercept shortcuts if user is typing in an input field
         const isTyping = e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA';
 
-        // Ctrl+A to open Apps dialog
-        if (e.ctrlKey && e.key === 'a' && !e.shiftKey && !e.metaKey && !isTyping) {
+        // Prefix key: Ctrl+Space
+        if (e.ctrlKey && e.key === ' ' && !e.shiftKey && !e.metaKey && !isTyping) {
             e.preventDefault();
-            const appsDialog = document.getElementById('apps-dialog');
-            const appsOverlay = document.getElementById('apps-overlay');
-            if (appsDialog && appsOverlay) {
-                loadApps();
-                appSearchQuery = '';
-                selectedAppIndex = 0;
-                appsDialog.classList.add('active');
-                appsOverlay.classList.add('active');
-                performAppSearch('');
+            e.stopPropagation();
+            prefixKeyPressed = true;
+
+            // Clear existing timeout
+            if (prefixKeyTimeout) {
+                clearTimeout(prefixKeyTimeout);
             }
+
+            // Set timeout to clear prefix state
+            prefixKeyTimeout = setTimeout(() => {
+                prefixKeyPressed = false;
+                prefixKeyTimeout = null;
+            }, PREFIX_KEY_TIMEOUT);
+
+            console.log('Prefix key pressed - waiting for command key (A/W/P/S)');
+            return;
         }
 
-        // Ctrl+W to open Windows dialog
-        if (e.ctrlKey && e.key === 'w' && !e.shiftKey && !e.metaKey && !isTyping) {
-            e.preventDefault();
-            const windowsDialog = document.getElementById('windows-dialog');
-            const windowsOverlay = document.getElementById('windows-overlay');
-            if (windowsDialog && windowsOverlay && sessionActive) {
-                send({ type: 'list_windows' });
-                windowSearchQuery = '';
-                selectedWindowIndex = 0;
-                windowsDialog.classList.add('active');
-                windowsOverlay.classList.add('active');
+        // Handle commands after prefix key
+        if (prefixKeyPressed && !isTyping) {
+            // Clear prefix state
+            prefixKeyPressed = false;
+            if (prefixKeyTimeout) {
+                clearTimeout(prefixKeyTimeout);
+                prefixKeyTimeout = null;
             }
-        }
 
-        // Ctrl+P to open Panes dialog
-        if (e.ctrlKey && e.key === 'p' && !e.shiftKey && !e.metaKey && !isTyping) {
-            e.preventDefault();
-            const controlsDialog = document.getElementById('controls-dialog');
-            const controlsOverlay = document.getElementById('controls-overlay');
-            if (controlsDialog && controlsOverlay && sessionActive) {
-                controlsDialog.classList.add('active');
-                controlsOverlay.classList.add('active');
+            // A for Apps
+            if (e.key === 'a' || e.key === 'A') {
+                e.preventDefault();
+                e.stopPropagation();
+                const appsDialog = document.getElementById('apps-dialog');
+                const appsOverlay = document.getElementById('apps-overlay');
+                if (appsDialog && appsOverlay) {
+                    loadApps();
+                    appSearchQuery = '';
+                    selectedAppIndex = 0;
+                    appsDialog.classList.add('active');
+                    appsOverlay.classList.add('active');
+                    performAppSearch('');
+                }
+                return;
             }
-        }
 
-        // Ctrl+S to open Sessions dialog
-        if (e.ctrlKey && (e.key === 's' || e.key === 'S') && !e.shiftKey && !e.metaKey && !isTyping) {
-            e.preventDefault();
-            const sessionsDialog = document.getElementById('sessions-dialog');
-            const sessionsOverlay = document.getElementById('sessions-overlay');
-            if (sessionsDialog && sessionsOverlay) {
-                send({ type: 'list' });
-                sessionsDialog.classList.add('active');
-                sessionsOverlay.classList.add('active');
+            // W for Windows
+            if (e.key === 'w' || e.key === 'W') {
+                e.preventDefault();
+                e.stopPropagation();
+                const windowsDialog = document.getElementById('windows-dialog');
+                const windowsOverlay = document.getElementById('windows-overlay');
+                if (windowsDialog && windowsOverlay && sessionActive) {
+                    send({ type: 'list_windows' });
+                    windowSearchQuery = '';
+                    selectedWindowIndex = 0;
+                    windowsDialog.classList.add('active');
+                    windowsOverlay.classList.add('active');
+                }
+                return;
+            }
+
+            // P for Panes
+            if (e.key === 'p' || e.key === 'P') {
+                e.preventDefault();
+                e.stopPropagation();
+                const controlsDialog = document.getElementById('controls-dialog');
+                const controlsOverlay = document.getElementById('controls-overlay');
+                if (controlsDialog && controlsOverlay && sessionActive) {
+                    highlightPaneButton(null);
+                    controlsDialog.classList.add('active');
+                    controlsOverlay.classList.add('active');
+                }
+                return;
+            }
+
+            // S for Sessions
+            if (e.key === 's' || e.key === 'S') {
+                e.preventDefault();
+                e.stopPropagation();
+                const sessionsDialog = document.getElementById('sessions-dialog');
+                const sessionsOverlay = document.getElementById('sessions-overlay');
+                if (sessionsDialog && sessionsOverlay) {
+                    sessionSearchQuery = '';
+                    selectedSessionIndex = 0;
+                    send({ type: 'list' });
+                    sessionsDialog.classList.add('active');
+                    sessionsOverlay.classList.add('active');
+                }
+                return;
             }
         }
         // Ctrl+Shift+V or Cmd+Shift+V for paste
@@ -228,7 +274,7 @@ function setupEventListeners() {
                 }
             }
         }
-    });
+    }, true); // Use capture phase to intercept before terminal
 
     // Handle terminal input
     term.onData((data) => {
@@ -781,7 +827,6 @@ function connect() {
                 // Store default session name
                 defaultSessionName = msg.session || null;
                 updateSessionList(msg.sessions);
-                updateKillButtonState();
 
                 // Check for auto-connect session in priority order:
                 // 1. Server default session (from --default-session flag)
@@ -820,7 +865,6 @@ function connect() {
 
             case 'sessions':
                 updateSessionList(msg.sessions);
-                updateKillButtonState();
                 break;
 
             case 'attached':
@@ -1057,6 +1101,11 @@ let sessionsCache = [];
 let filteredSessions = [];
 let selectedSessionIndex = 0;
 let sessionSearchQuery = '';
+
+// Prefix key handling (like tmux Ctrl+b)
+let prefixKeyPressed = false;
+let prefixKeyTimeout = null;
+const PREFIX_KEY_TIMEOUT = 1000; // 1 second to press second key
 
 // Fetch config
 fetch('/api/config')
