@@ -66,10 +66,17 @@ func (am *AppsManager) StartXpraApp(appName string, command string) (*XpraSessio
 			shell = "/bin/sh"
 		}
 
-		// Use login shell (-l) to load user's environment (APPSHOME comes from shell profile)
-		// Only export APPNAME, let login shell provide APPSHOME
-		envCmd := fmt.Sprintf("export APPNAME=%s; %s", appName, command)
-		startCommand = fmt.Sprintf("%s -l -c %q", shell, envCmd)
+		// Use login shell (-l) to load user's environment
+		// For multi-line commands, use $'...' which interprets escape sequences
+		if strings.Contains(command, "\n") {
+			// Multi-line: escape single quotes and wrap in $'...'
+			escapedCmd := strings.ReplaceAll(command, "'", "'\\''")
+			startCommand = fmt.Sprintf("%s -l -c $'export APPNAME=%s\\n%s'", shell, appName, escapedCmd)
+		} else {
+			// Single-line: use regular quoting
+			envCmd := fmt.Sprintf("export APPNAME=%s; %s", appName, command)
+			startCommand = fmt.Sprintf("%s -l -c %q", shell, envCmd)
+		}
 	}
 
 	// Build xpra command

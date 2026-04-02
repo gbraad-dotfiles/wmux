@@ -1256,6 +1256,10 @@ async function launchApp(appName) {
 
     console.log(`Starting ${appName}...`);
 
+    // Show loading button immediately for GUI apps
+    // (We'll update it when the app is ready)
+    const loadingButton = createXpraAppButton(appName, true);
+
     try {
         const response = await fetch(`/api/apps/${appName}/run`, {
             method: 'POST',
@@ -1266,6 +1270,8 @@ async function launchApp(appName) {
         if (!response.ok) {
             const errorText = await response.text();
             console.error(`Server error (${response.status}):`, errorText);
+            // Remove loading button on error
+            if (loadingButton) loadingButton.remove();
             return;
         }
 
@@ -1276,26 +1282,31 @@ async function launchApp(appName) {
             if (result.mode === 'xpra' && result.session && result.session.url) {
                 console.log('Opening xpra session:', result.session.url);
 
-                // Create button if it doesn't exist
-                if (!activeXpraApps.has(appName)) {
-                    const button = createXpraAppButton(appName);
-                    activeXpraApps.set(appName, {
-                        url: result.session.url,
-                        button: button
-                    });
-                }
+                // Update button to ready state
+                updateXpraButtonReady(appName);
+
+                // Store in active apps
+                activeXpraApps.set(appName, {
+                    url: result.session.url,
+                    button: loadingButton
+                });
 
                 // Show this app
                 showXpraView(appName);
             } else {
-                // Terminal app - refresh windows list
+                // Terminal app - remove loading button, refresh windows list
+                if (loadingButton) loadingButton.remove();
                 send({ type: 'list_windows' });
             }
         } else {
             console.error('Launch failed:', result);
+            // Remove loading button on error
+            if (loadingButton) loadingButton.remove();
         }
     } catch (err) {
         console.error('Failed to launch app:', err);
+        // Remove loading button on error
+        if (loadingButton) loadingButton.remove();
     }
 }
 
@@ -2008,20 +2019,67 @@ const activeXpraApps = new Map(); // appName -> { url, button }
 let currentXpraApp = null;
 
 // Create app button dynamically
-function createXpraAppButton(appName) {
+function createXpraAppButton(appName, isLoading = false) {
     const container = document.getElementById('xpra-app-buttons');
     if (!container) return null;
 
     const button = document.createElement('button');
     button.className = 'controls-button';
     button.dataset.appName = appName;
+
+    if (isLoading) {
+        button.innerHTML = `
+            <span class="app-name-click" style="cursor: pointer;">${appName}</span>
+            <span style="margin: 0 4px; color: white;">│</span>
+            <span>⏳</span>
+        `;
+    } else {
+        button.innerHTML = `
+            <span class="app-name-click" style="cursor: pointer;">${appName}</span>
+            <span style="margin: 0 4px; color: white;">│</span>
+            <span class="app-close-btn" style="cursor: pointer;">✕</span>
+        `;
+    }
+
+    if (!isLoading) {
+        // Click on app name → show/toggle view
+        button.querySelector('.app-name-click').addEventListener('click', () => {
+            if (currentXpraApp === appName) {
+                hideXpraView();
+            } else {
+                showXpraView(appName);
+            }
+        });
+
+        // Click on ✕ → close app completely
+        const closeBtn = button.querySelector('.app-close-btn');
+        if (closeBtn) {
+            closeBtn.addEventListener('click', async (e) => {
+                e.stopPropagation();
+                await closeXpraApp(appName);
+            });
+        }
+    }
+
+    container.appendChild(button);
+    return button;
+}
+
+// Update button from loading to ready
+function updateXpraButtonReady(appName) {
+    const container = document.getElementById('xpra-app-buttons');
+    if (!container) return;
+
+    const button = container.querySelector(`[data-app-name="${appName}"]`);
+    if (!button) return;
+
     button.innerHTML = `
         <span class="app-name-click" style="cursor: pointer;">${appName}</span>
-        <span style="margin: 0 4px; opacity: 0.5;">│</span>
+        <span style="margin: 0 4px; color: white;">│</span>
         <span class="app-close-btn" style="cursor: pointer;">✕</span>
     `;
 
-    // Click on app name → show/toggle view
+    // Re-attach click handlers
     button.querySelector('.app-name-click').addEventListener('click', () => {
         if (currentXpraApp === appName) {
             hideXpraView();
@@ -2030,14 +2088,10 @@ function createXpraAppButton(appName) {
         }
     });
 
-    // Click on ✕ → close app completely
     button.querySelector('.app-close-btn').addEventListener('click', async (e) => {
         e.stopPropagation();
         await closeXpraApp(appName);
     });
-
-    container.appendChild(button);
-    return button;
 }
 
 // Remove app button

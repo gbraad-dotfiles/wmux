@@ -294,8 +294,21 @@ func (am *AppsManager) loadApps() error {
 func (am *AppsManager) handleListApps(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
-	apps := make([]*AppSummary, 0, len(am.apps))
-	for _, app := range am.apps {
+	// Scan directory fresh each time to pick up new files
+	pattern := filepath.Join(am.config.AppsPath, "*.md")
+	files, err := filepath.Glob(pattern)
+	if err != nil {
+		http.Error(w, "Failed to scan apps directory", http.StatusInternalServerError)
+		return
+	}
+
+	apps := make([]*AppSummary, 0)
+	for _, file := range files {
+		app, err := ParseActionFile(file)
+		if err != nil {
+			log.Printf("Warning: failed to parse %s: %v", file, err)
+			continue
+		}
 		apps = append(apps, &AppSummary{
 			Name:    app.Name,
 			Title:   app.Title,
@@ -321,8 +334,10 @@ func (am *AppsManager) handleGetApp(w http.ResponseWriter, r *http.Request) {
 	}
 	name := parts[0]
 
-	app, exists := am.apps[name]
-	if !exists {
+	// Parse fresh from disk
+	appPath := filepath.Join(am.config.AppsPath, name+".md")
+	app, err := ParseActionFile(appPath)
+	if err != nil {
 		http.Error(w, "App not found", http.StatusNotFound)
 		return
 	}
@@ -348,9 +363,11 @@ func (am *AppsManager) handleRunApp(w http.ResponseWriter, r *http.Request) {
 	}
 	name := parts[0]
 
-	app, exists := am.apps[name]
-	if !exists {
-		http.Error(w, "App not found", http.StatusNotFound)
+	// Re-parse the actionfile to get latest actions
+	appPath := filepath.Join(am.config.AppsPath, name+".md")
+	app, err := ParseActionFile(appPath)
+	if err != nil {
+		http.Error(w, "App not found or failed to parse", http.StatusNotFound)
 		return
 	}
 
