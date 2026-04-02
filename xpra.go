@@ -46,14 +46,47 @@ func (am *AppsManager) StartXpraApp(appName string, command string) (*XpraSessio
 	stopCmd := exec.Command("xpra", "stop", fmt.Sprintf(":%d", display))
 	stopCmd.Run() // Ignore errors if nothing is running
 
-	// Build xpra command - just pass the command directly to xpra
+	// Wrap in shell if command needs it:
+	// - Has shell variables ($VAR or ${VAR})
+	// - Multi-line or has pipes/conditionals
+	needsShell := strings.Contains(command, "$") ||
+		strings.Contains(command, "\n") ||
+		strings.Contains(command, "|") ||
+		strings.Contains(command, "&&") ||
+		strings.Contains(command, "||") ||
+		strings.Contains(command, "if ") ||
+		strings.Contains(command, "for ") ||
+		strings.Contains(command, "while ")
+
+	startCommand := command
+	if needsShell {
+		// Get user's shell from environment or use sh
+		shell := os.Getenv("SHELL")
+		if shell == "" {
+			shell = "/bin/sh"
+		}
+
+		// Use login shell (-l) to load user's environment (APPSHOME comes from shell profile)
+		// Only export APPNAME, let login shell provide APPSHOME
+		envCmd := fmt.Sprintf("export APPNAME=%s; %s", appName, command)
+		startCommand = fmt.Sprintf("%s -l -c %q", shell, envCmd)
+	}
+
+	// Build xpra command
 	args := []string{
 		"start",
 		fmt.Sprintf(":%d", display),
 		fmt.Sprintf("--bind-tcp=0.0.0.0:%d", port),
 		"--html=on",
 		"--auth=none",
-		fmt.Sprintf("--start=%s", command),
+		"--cursors=no",           // Disable custom cursors (fixes huge cursor)
+		"--dpi=96",               // Set DPI explicitly
+		"--desktop-scaling=off",  // Disable desktop scaling
+		"--notifications=no",     // Disable notification sounds
+		"--bell=no",              // Disable system bell
+		"--encoding=rgb",         // Use RGB encoding for better colors
+		"--compress=0",           // Disable compression for better quality
+		fmt.Sprintf("--start=%s", startCommand),
 		"--daemon=yes",
 	}
 
@@ -74,11 +107,15 @@ func (am *AppsManager) StartXpraApp(appName string, command string) (*XpraSessio
 	log.Printf("Xpra started successfully: %s", string(output))
 
 	// Wait for xpra to be ready by checking if the port is open
+	// Use direct dialer to bypass proxy settings
 	log.Printf("Waiting for xpra to be ready on port %d...", port)
 	ready := false
 	var lastErr error
+	dialer := &net.Dialer{
+		Timeout: 200 * time.Millisecond,
+	}
 	for i := 0; i < 100; i++ { // Try for 10 seconds (100 * 100ms)
-		conn, err := net.DialTimeout("tcp", fmt.Sprintf("localhost:%d", port), 200*time.Millisecond)
+		conn, err := dialer.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", port))
 		if err == nil {
 			conn.Close()
 			ready = true
@@ -126,7 +163,7 @@ func (s *XpraSession) Info() *XpraSessionInfo {
 		Display:  s.Display,
 		Port:     s.Port,
 		AppName:  s.AppName,
-		URL:      fmt.Sprintf("/xpra/%d/", s.Display),
+		URL:      fmt.Sprintf("/xpra/%d/index.html", s.Display),
 		WSURL:    fmt.Sprintf("/xpra/%d/websocket", s.Display),
 		Attached: s.Attached,
 	}

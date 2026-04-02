@@ -360,20 +360,24 @@ func (am *AppsManager) handleRunApp(w http.ResponseWriter, r *http.Request) {
 		json.NewDecoder(r.Body).Decode(&req)
 	}
 
-	// Auto-detect GUI apps: if app has run-desktop action, use xpra mode
+	// Auto-detect GUI apps: if app has run-xpra or run-desktop action, use xpra mode
 	if req.Mode == "" || req.Mode == "terminal" {
-		if app.HasAction("run-desktop") {
+		if app.HasAction("run-xpra") || app.HasAction("run-desktop") {
 			req.Mode = "xpra"
-			log.Printf("Auto-detected desktop app %s (has run-desktop action), switching to xpra mode", name)
+			log.Printf("Auto-detected desktop app %s (has GUI action), switching to xpra mode", name)
 		} else {
 			req.Mode = "terminal"
 		}
 	}
 
 	if req.Action == "" {
-		// Convention: use run-desktop for GUI apps (xpra), run for terminal apps
+		// Convention: prefer run-xpra, fallback to run-desktop for GUI apps, run for terminal apps
 		if req.Mode == "xpra" {
-			req.Action = "run-desktop"
+			if app.HasAction("run-xpra") {
+				req.Action = "run-xpra"
+			} else {
+				req.Action = "run-desktop"
+			}
 		} else {
 			req.Action = "run"
 		}
@@ -399,14 +403,17 @@ func (am *AppsManager) handleRunApp(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// Expand variables in the command (e.g., $cmd -> /usr/bin/vivaldi)
+		// Get command - will be passed to shell with env vars set
 		command := action.Code
-		log.Printf("Before expansion: %q", command)
-		log.Printf("Available vars: %+v", app.Vars)
+		log.Printf("Command from actionfile: %q", command)
+		log.Printf("Available actionfile vars: %+v", app.Vars)
 
+		// Expand only actionfile vars (e.g., $cmd -> /usr/bin/vivaldi)
+		// Leave APPNAME/APPSHOME for shell expansion
 		for varName, varValue := range app.Vars {
 			before := command
 			command = strings.ReplaceAll(command, "$"+varName, varValue)
+			command = strings.ReplaceAll(command, "${"+varName+"}", varValue)
 			if before != command {
 				log.Printf("Replaced $%s with %s", varName, varValue)
 			}
@@ -414,8 +421,6 @@ func (am *AppsManager) handleRunApp(w http.ResponseWriter, r *http.Request) {
 
 		// Trim whitespace
 		command = strings.TrimSpace(command)
-
-		log.Printf("After expansion: %q", command)
 
 		// Start xpra session with the expanded command
 		session, err := am.StartXpraApp(name, command)
@@ -476,16 +481,16 @@ func (am *AppsManager) handleStopXpra(w http.ResponseWriter, r *http.Request) {
 			log.Printf("Stopping xpra session for %s on display :%d", req.AppName, display)
 
 			if err := session.Stop(); err != nil {
-				log.Printf("Failed to stop xpra session: %v", err)
-				http.Error(w, fmt.Sprintf("Failed to stop session: %v", err), http.StatusInternalServerError)
-				return
+				// Log the error but still clean up tracking
+				// Session might already be stopped, which is fine
+				log.Printf("Failed to stop xpra session (continuing cleanup): %v", err)
 			}
 
-			// Remove from tracking
+			// Remove from tracking regardless
 			delete(am.xpraSessions, display)
 
 			json.NewEncoder(w).Encode(map[string]interface{}{
-				"status": "success",
+				"status":  "success",
 				"message": fmt.Sprintf("Stopped xpra session for %s", req.AppName),
 			})
 			return
@@ -501,8 +506,15 @@ func (am *AppsManager) proxyWebSocket(w http.ResponseWriter, r *http.Request, po
 
 	log.Printf("Proxying WebSocket: %s -> %s", r.URL.Path, targetURL)
 
-	// Connect to backend xpra websocket
-	backendConn, _, err := websocket.DefaultDialer.Dial(targetURL, nil)
+	// Get WebSocket subprotocols from client
+	requestHeader := make(http.Header)
+	if protocols := r.Header.Get("Sec-WebSocket-Protocol"); protocols != "" {
+		requestHeader.Set("Sec-WebSocket-Protocol", protocols)
+		log.Printf("Client requested protocols: %s", protocols)
+	}
+
+	// Connect to backend xpra websocket with subprotocols
+	backendConn, backendResp, err := websocket.DefaultDialer.Dial(targetURL, requestHeader)
 	if err != nil {
 		log.Printf("Failed to dial backend websocket: %v", err)
 		http.Error(w, "Failed to connect to xpra websocket", http.StatusBadGateway)
@@ -510,8 +522,18 @@ func (am *AppsManager) proxyWebSocket(w http.ResponseWriter, r *http.Request, po
 	}
 	defer backendConn.Close()
 
-	// Upgrade client connection
-	clientConn, err := upgrader.Upgrade(w, r, nil)
+	// Get negotiated subprotocol from backend
+	negotiatedProtocol := backendResp.Header.Get("Sec-WebSocket-Protocol")
+	if negotiatedProtocol != "" {
+		log.Printf("Backend negotiated protocol: %s", negotiatedProtocol)
+	}
+
+	// Upgrade client connection with negotiated subprotocol
+	responseHeader := http.Header{}
+	if negotiatedProtocol != "" {
+		responseHeader.Set("Sec-WebSocket-Protocol", negotiatedProtocol)
+	}
+	clientConn, err := upgrader.Upgrade(w, r, responseHeader)
 	if err != nil {
 		log.Printf("Failed to upgrade client connection: %v", err)
 		return

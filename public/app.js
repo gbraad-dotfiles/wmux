@@ -1254,21 +1254,7 @@ async function launchApp(appName) {
     appSearchQuery = '';
     selectedAppIndex = 0;
 
-    // Show loading immediately
-    const xpraOverlay = document.getElementById('xpra-overlay');
-    const xpraLoading = document.getElementById('xpra-loading');
-    const xpraFrame = document.getElementById('xpra-frame');
-    const xpraAppNameClick = document.getElementById('xpra-app-name-click');
-    const xpraAppBtn = document.getElementById('xpra-app-btn');
-
-    if (xpraOverlay && xpraLoading && xpraAppNameClick && xpraAppBtn) {
-        xpraAppNameClick.textContent = appName;
-        xpraAppBtn.style.display = 'block';
-        xpraOverlay.style.display = 'block';
-        xpraLoading.style.display = 'flex';
-        if (xpraFrame) xpraFrame.style.display = 'none';
-        console.log(`Starting ${appName}...`);
-    }
+    console.log(`Starting ${appName}...`);
 
     try {
         const response = await fetch(`/api/apps/${appName}/run`, {
@@ -1280,9 +1266,6 @@ async function launchApp(appName) {
         if (!response.ok) {
             const errorText = await response.text();
             console.error(`Server error (${response.status}):`, errorText);
-            // Hide loading on error
-            if (xpraOverlay) xpraOverlay.style.display = 'none';
-            if (xpraAppBtn) xpraAppBtn.style.display = 'none';
             return;
         }
 
@@ -1292,24 +1275,27 @@ async function launchApp(appName) {
             // Handle xpra mode - show in integrated view
             if (result.mode === 'xpra' && result.session && result.session.url) {
                 console.log('Opening xpra session:', result.session.url);
-                showXpraView(appName, result.session.url);
+
+                // Create button if it doesn't exist
+                if (!activeXpraApps.has(appName)) {
+                    const button = createXpraAppButton(appName);
+                    activeXpraApps.set(appName, {
+                        url: result.session.url,
+                        button: button
+                    });
+                }
+
+                // Show this app
+                showXpraView(appName);
             } else {
-                // Terminal app - hide loading, refresh windows list
-                if (xpraOverlay) xpraOverlay.style.display = 'none';
-                if (xpraAppBtn) xpraAppBtn.style.display = 'none';
+                // Terminal app - refresh windows list
                 send({ type: 'list_windows' });
             }
         } else {
             console.error('Launch failed:', result);
-            // Hide loading on error
-            if (xpraOverlay) xpraOverlay.style.display = 'none';
-            if (xpraAppBtn) xpraAppBtn.style.display = 'none';
         }
     } catch (err) {
         console.error('Failed to launch app:', err);
-        // Hide loading on error
-        if (xpraOverlay) xpraOverlay.style.display = 'none';
-        if (xpraAppBtn) xpraAppBtn.style.display = 'none';
     }
 }
 
@@ -1914,22 +1900,21 @@ if (debugToggle && debugSection) {
 }
 
 // Xpra overlay functions
-let currentXpraAppName = null;
+// Removed - now using currentXpraApp in activeXpraApps system above
 
-function showXpraView(appName, url) {
+function showXpraView(appName) {
+    const appData = activeXpraApps.get(appName);
+    if (!appData) {
+        console.error(`App ${appName} not found in active apps`);
+        return;
+    }
+
     const xpraOverlay = document.getElementById('xpra-overlay');
     const xpraFrame = document.getElementById('xpra-frame');
     const xpraLoading = document.getElementById('xpra-loading');
-    const xpraAppNameClick = document.getElementById('xpra-app-name-click');
-    const xpraAppBtn = document.getElementById('xpra-app-btn');
 
-    if (xpraOverlay && xpraFrame && xpraLoading && xpraAppNameClick && xpraAppBtn) {
-        // Set app name
-        xpraAppNameClick.textContent = appName;
-        currentXpraAppName = appName;
-
-        // Show button
-        xpraAppBtn.style.display = 'block';
+    if (xpraOverlay && xpraFrame && xpraLoading) {
+        currentXpraApp = appName;
 
         // Show overlay with loading message
         xpraOverlay.style.display = 'block';
@@ -1937,7 +1922,7 @@ function showXpraView(appName, url) {
         xpraFrame.style.display = 'none';
 
         // Set iframe URL
-        xpraFrame.src = url;
+        xpraFrame.src = appData.url;
 
         // Wait for iframe to load, then hide loading
         xpraFrame.onload = function() {
@@ -1946,7 +1931,7 @@ function showXpraView(appName, url) {
             console.log(`Xpra app ${appName} loaded`);
         };
 
-        console.log(`Showing xpra overlay for ${appName} at ${url}`);
+        console.log(`Showing xpra overlay for ${appName} at ${appData.url}`);
     }
 }
 
@@ -1956,24 +1941,24 @@ function hideXpraView() {
     if (xpraOverlay) {
         // Hide overlay (but keep iframe loaded and buttons visible)
         xpraOverlay.style.display = 'none';
+        currentXpraApp = null;
 
-        console.log('Hid xpra overlay (app still running)');
+        console.log('Hid xpra overlay (apps still running)');
     }
 }
 
-async function closeXpraApp() {
-    if (!currentXpraAppName) return;
+async function closeXpraApp(appName) {
+    if (!activeXpraApps.has(appName)) return;
 
     const xpraOverlay = document.getElementById('xpra-overlay');
     const xpraFrame = document.getElementById('xpra-frame');
-    const xpraAppBtn = document.getElementById('xpra-app-btn');
 
     // Call API to stop xpra session
     try {
         const response = await fetch('/api/xpra/stop', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ appName: currentXpraAppName })
+            body: JSON.stringify({ appName: appName })
         });
 
         if (!response.ok) {
@@ -1985,72 +1970,112 @@ async function closeXpraApp() {
         console.error('Error stopping xpra session:', err);
     }
 
-    // Clear UI
-    if (xpraOverlay && xpraFrame && xpraAppBtn) {
-        xpraFrame.src = '';
-        xpraOverlay.style.display = 'none';
-        xpraAppBtn.style.display = 'none';
-        currentXpraAppName = null;
+    // Remove from active apps
+    removeXpraAppButton(appName);
+    activeXpraApps.delete(appName);
 
-        console.log('Closed xpra app completely');
+    // If this was the current app, hide the overlay
+    if (currentXpraApp === appName) {
+        if (xpraOverlay) xpraOverlay.style.display = 'none';
+        if (xpraFrame) xpraFrame.src = '';
+        currentXpraApp = null;
     }
+
+    console.log(`Closed xpra app ${appName} completely`);
 }
 
-function toggleXpraView() {
-    const xpraOverlay = document.getElementById('xpra-overlay');
-    if (xpraOverlay) {
-        if (xpraOverlay.style.display === 'block') {
-            hideXpraView();
-        } else {
-            xpraOverlay.style.display = 'block';
-        }
-    }
-}
+// toggleXpraView removed - toggle logic now in createXpraAppButton() click handlers
 
 // Setup xpra buttons
-const xpraAppBtn = document.getElementById('xpra-app-btn');
-const xpraCloseBtnSpan = document.getElementById('xpra-close-btn');
-
-// [AppName (X)] button - clicking app name toggles view, clicking (X) closes
-if (xpraAppBtn) {
-    xpraAppBtn.addEventListener('click', (e) => {
-        // Check if user clicked on the (X) part
-        if (e.target.id === 'xpra-close-btn' || e.target === xpraCloseBtnSpan) {
-            e.stopPropagation();
-            closeXpraApp();
-        } else {
-            // Clicked on app name - toggle view
-            const xpraOverlay = document.getElementById('xpra-overlay');
-            if (xpraOverlay) {
-                if (xpraOverlay.style.display === 'block') {
-                    hideXpraView();
-                } else {
-                    xpraOverlay.style.display = 'block';
-                }
-            }
-        }
-    });
-}
-
-// Also make the (X) span itself clickable
-if (xpraCloseBtnSpan) {
-    xpraCloseBtnSpan.addEventListener('click', (e) => {
-        e.stopPropagation();
-        closeXpraApp();
-    });
-}
+// Xpra app buttons are now created dynamically in createXpraAppButton()
+// Old static button code removed
 
 // Other buttons (Windows, Panes) hide xpra overlay to show terminal
 if (controlsBtn) {
     controlsBtn.addEventListener('click', () => {
-        if (currentXpraAppName) hideXpraView();
+        if (currentXpraApp) hideXpraView();
     });
 }
 
 if (windowsBtn) {
     windowsBtn.addEventListener('click', () => {
-        if (currentXpraAppName) hideXpraView();
+        if (currentXpraApp) hideXpraView();
     });
+}
+
+// Track all active xpra apps
+const activeXpraApps = new Map(); // appName -> { url, button }
+let currentXpraApp = null;
+
+// Create app button dynamically
+function createXpraAppButton(appName) {
+    const container = document.getElementById('xpra-app-buttons');
+    if (!container) return null;
+
+    const button = document.createElement('button');
+    button.className = 'controls-button';
+    button.dataset.appName = appName;
+    button.innerHTML = `
+        <span class="app-name-click" style="cursor: pointer;">${appName}</span>
+        <span style="margin: 0 4px; opacity: 0.5;">│</span>
+        <span class="app-close-btn" style="cursor: pointer;">✕</span>
+    `;
+
+    // Click on app name → show/toggle view
+    button.querySelector('.app-name-click').addEventListener('click', () => {
+        if (currentXpraApp === appName) {
+            hideXpraView();
+        } else {
+            showXpraView(appName);
+        }
+    });
+
+    // Click on ✕ → close app completely
+    button.querySelector('.app-close-btn').addEventListener('click', async (e) => {
+        e.stopPropagation();
+        await closeXpraApp(appName);
+    });
+
+    container.appendChild(button);
+    return button;
+}
+
+// Remove app button
+function removeXpraAppButton(appName) {
+    const container = document.getElementById('xpra-app-buttons');
+    if (!container) return;
+
+    const button = container.querySelector(`[data-app-name="${appName}"]`);
+    if (button) {
+        button.remove();
+    }
+}
+
+// Restore active xpra sessions on page load
+async function restoreXpraSessions() {
+    try {
+        const response = await fetch('/api/xpra/sessions');
+        if (!response.ok) return;
+
+        const data = await response.json();
+        if (!data.sessions || data.sessions.length === 0) return;
+
+        // Restore each active session
+        for (const session of data.sessions) {
+            const button = createXpraAppButton(session.app_name);
+            activeXpraApps.set(session.app_name, {
+                url: session.url,
+                button: button
+            });
+        }
+
+        // Show the first app
+        if (data.sessions.length > 0) {
+            showXpraView(data.sessions[0].app_name);
+        }
+    } catch (err) {
+        console.error('Failed to restore xpra sessions:', err);
+    }
 }
 
 // Main initialization function for SPA
@@ -2064,6 +2089,7 @@ function initApp() {
         startDebugUpdates();
     }
     connect();
+    restoreXpraSessions();
 }
 
 // For backwards compatibility and SPA routing
