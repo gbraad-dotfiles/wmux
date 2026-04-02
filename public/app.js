@@ -43,6 +43,27 @@ function initTerminal() {
     term.loadAddon(webLinksAddon);
 
     term.open(document.getElementById('terminal'));
+
+    // Attach custom key event handler to intercept prefix key before xterm processes it
+    term.attachCustomKeyEventHandler((e) => {
+        // Intercept Ctrl+Space (prefix key)
+        if (e.ctrlKey && e.key === ' ' && !e.shiftKey && !e.metaKey) {
+            // Prevent xterm from processing this event
+            return false;
+        }
+
+        // Intercept command keys after prefix (H, A, W, P, S)
+        if (prefixKeyPressed) {
+            const key = e.key.toLowerCase();
+            if (key === 'h' || key === 'a' || key === 'w' || key === 'p' || key === 's') {
+                // Prevent xterm from processing these keys when prefix is active
+                return false;
+            }
+        }
+
+        // Allow xterm to process all other keys normally
+        return true;
+    });
 }
 
 function setupClipboardSupport() {
@@ -160,8 +181,9 @@ function setupEventListeners() {
             }
         }
 
-        // Don't intercept shortcuts if user is typing in an input field
-        const isTyping = e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA';
+        // Don't intercept shortcuts if user is typing in an input field (but allow terminal textarea)
+        const isTyping = (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') &&
+                         !e.target.closest('#terminal-container');
 
         // Prefix key: Ctrl+Space
         if (e.ctrlKey && e.key === ' ' && !e.shiftKey && !e.metaKey && !isTyping) {
