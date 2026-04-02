@@ -318,5 +318,13 @@
     <script src="vendor/xterm-addon-web-links.js"></script>
     <script src="spa-router.js"></script>
     <script src="app.js"></script>
+    <script>
+        // Register service worker
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('/service-worker.js')
+                .then(registration => console.log('Service Worker registered:', registration))
+                .catch(error => console.log('Service Worker registration failed:', error));
+        }
+    </script>
 </body>
 </html>
