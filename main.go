@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
 
@@ -458,6 +459,10 @@ func main() {
 	multiHost := flag.Bool("multi-host", false, "Enable multi-host mode (host selector interface)")
 	exposeHosts := flag.Bool("expose-hosts", false, "Auto-discover hosts (requires --multi-host)")
 	defaultSession := flag.String("default-session", "screen", "Default session to auto-connect on all machines (default: 'screen')")
+	amuxURL := flag.String("amux-url", "http://localhost:2023", "URL for amux API server (default: http://localhost:2023)")
+	tlsEnable := flag.Bool("tls", false, "Enable HTTPS/TLS")
+	tlsCert := flag.String("tls-cert", "", "TLS certificate file (default: ~/.wmux/wmux.crt)")
+	tlsKey := flag.String("tls-key", "", "TLS key file (default: ~/.wmux/wmux.key)")
 	flag.Parse()
 
 	if *version {
@@ -465,6 +470,24 @@ func main() {
 		fmt.Println("Web-based tmux controller with mouse support")
 		fmt.Println("https://github.com/gbraad/wmux")
 		os.Exit(0)
+	}
+
+	// Set default TLS cert paths if not specified
+	if *tlsCert == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			log.Fatal("Could not determine home directory:", err)
+		}
+		certPath := filepath.Join(home, ".wmux", "wmux.crt")
+		tlsCert = &certPath
+	}
+	if *tlsKey == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			log.Fatal("Could not determine home directory:", err)
+		}
+		keyPath := filepath.Join(home, ".wmux", "wmux.key")
+		tlsKey = &keyPath
 	}
 
 	log.Printf("wmux v%s - Web-based tmux Controller\n", Version)
@@ -511,19 +534,122 @@ func main() {
 			http.HandleFunc("/api/discover", makeDiscoverHostsHandler(*port))
 		}
 	} else {
-		// Single-host mode: serve normal interface
-		http.Handle("/", http.FileServer(http.Dir("./public")))
+		// Single-host mode: serve normal interface with ?host=auto
+		http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == "/" && r.URL.RawQuery == "" {
+				http.Redirect(w, r, "/?host=auto", http.StatusFound)
+			} else {
+				http.FileServer(http.Dir("./public")).ServeHTTP(w, r)
+			}
+		})
 	}
 
 	// WebSocket endpoint
 	http.HandleFunc("/ws", makeWebSocketHandler(*defaultSession))
 
-	if *bindAll {
-		log.Printf("Server running on http://%s\n", bindAddr)
-		log.Printf("WARNING: Exposed to all interfaces!\n")
-	} else {
-		log.Printf("Server running on http://%s (Tailscale)\n", bindAddr)
+	// Config endpoint
+	http.HandleFunc("/api/config", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{
+			"defaultSession": *defaultSession,
+		})
+	})
+
+	// Apps proxy - forward /api/apps* to amux server
+	proxyHandler := func(w http.ResponseWriter, r *http.Request) {
+		targetPath := r.URL.Path
+		if r.URL.RawQuery != "" {
+			targetPath += "?" + r.URL.RawQuery
+		}
+		targetURL := *amuxURL + targetPath
+
+		// Create proxy request
+		proxyReq, err := http.NewRequest(r.Method, targetURL, r.Body)
+		if err != nil {
+			http.Error(w, "Failed to create proxy request", http.StatusInternalServerError)
+			return
+		}
+
+		// Copy headers
+		for key, values := range r.Header {
+			for _, value := range values {
+				proxyReq.Header.Add(key, value)
+			}
+		}
+
+		// Execute request
+		client := &http.Client{}
+		resp, err := client.Do(proxyReq)
+		if err != nil {
+			http.Error(w, "Failed to reach amux: "+err.Error(), http.StatusBadGateway)
+			return
+		}
+		defer resp.Body.Close()
+
+		// Copy response headers
+		for key, values := range resp.Header {
+			for _, value := range values {
+				w.Header().Add(key, value)
+			}
+		}
+
+		// Copy status code
+		w.WriteHeader(resp.StatusCode)
+
+		// Copy body
+		io.Copy(w, resp.Body)
 	}
 
-	log.Fatal(http.ListenAndServe(bindAddr, nil))
+	http.HandleFunc("/api/apps", proxyHandler)
+	http.HandleFunc("/api/apps/", proxyHandler)
+
+	protocol := "http"
+	if *tlsEnable {
+		protocol = "https"
+		// Check if cert files exist
+		if _, err := os.Stat(*tlsCert); os.IsNotExist(err) {
+			log.Fatalf("TLS certificate file not found: %s\nGenerate with: ./gen-cert.sh", *tlsCert)
+		}
+		if _, err := os.Stat(*tlsKey); os.IsNotExist(err) {
+			log.Fatalf("TLS key file not found: %s\nGenerate with: ./gen-cert.sh", *tlsKey)
+		}
+
+		// Start HTTP redirect server on port 2080
+		httpPort := 2080
+		var httpBindAddr string
+		if *bindAll {
+			httpBindAddr = fmt.Sprintf("0.0.0.0:%d", httpPort)
+		} else {
+			tailscaleIP, _ := getTailscaleIP()
+			httpBindAddr = fmt.Sprintf("%s:%d", tailscaleIP, httpPort)
+		}
+
+		// HTTP redirect handler
+		go func() {
+			redirectMux := http.NewServeMux()
+			redirectMux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+				// Redirect to HTTPS on main port
+				host := strings.Split(r.Host, ":")[0]
+				httpsURL := fmt.Sprintf("https://%s:%d%s", host, *port, r.RequestURI)
+				http.Redirect(w, r, httpsURL, http.StatusMovedPermanently)
+			})
+			log.Printf("HTTP redirect server running on http://%s\n", httpBindAddr)
+			if err := http.ListenAndServe(httpBindAddr, redirectMux); err != nil {
+				log.Printf("HTTP redirect server failed: %v", err)
+			}
+		}()
+	}
+
+	if *bindAll {
+		log.Printf("Server running on %s://%s\n", protocol, bindAddr)
+		log.Printf("WARNING: Exposed to all interfaces!\n")
+	} else {
+		log.Printf("Server running on %s://%s (Tailscale)\n", protocol, bindAddr)
+	}
+
+	if *tlsEnable {
+		log.Fatal(http.ListenAndServeTLS(bindAddr, *tlsCert, *tlsKey, nil))
+	} else {
+		log.Fatal(http.ListenAndServe(bindAddr, nil))
+	}
 }

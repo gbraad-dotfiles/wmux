@@ -1,14 +1,14 @@
 [Unit]
 Description=wmux - Web-based tmux Controller for %i
-After=network-online.target tailscaled.service
-Wants=network-online.target
+After=network-online.target tailscaled.service amux@%i.service
+Wants=network-online.target amux@%i.service
 
 [Service]
 Type=simple
 User=%i
 Group=%i
-WorkingDirectory=/usr/local/bin
-ExecStart=/usr/local/bin/wmux
+WorkingDirectory=/home/%i
+ExecStart=/usr/local/bin/wmux --tls --amux-url http://localhost:2023
 Restart=on-failure
 RestartSec=5s
 

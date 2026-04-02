@@ -17,6 +17,7 @@
         <button class="hamburger-button" id="menu-btn">☰</button>
         <div class="banner-title">wmux</div>
         <button class="controls-button" id="sessions-btn"><span class="btn-full">Sessions</span><span class="btn-short">S</span></button>
+        <button class="controls-button" id="apps-btn"><span class="btn-full">Apps</span><span class="btn-short">A</span></button>
         <button class="controls-button" id="windows-btn" style="display: none;"><span class="btn-full">Windows</span><span class="btn-short">W</span></button>
         <button class="controls-button" id="controls-btn" style="display: none;"><span class="btn-full">Panes</span><span class="btn-short">P</span></button>
         <div class="connection-indicator" id="status">
@@ -157,6 +158,24 @@ Loading...
                 <div class="control-section-label">Create New Session</div>
                 <input type="text" id="new-session-name" placeholder="wmux_new" style="width: 100%; margin-bottom: 10px; padding: 8px; background: var(--bg-tertiary); border: 1px solid var(--border); color: var(--text-primary); border-radius: 4px; font-family: inherit; font-size: 0.85em;">
                 <button id="create-btn" class="control-btn">Create New Session</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Applications Dialog -->
+    <div class="dialog-overlay" id="apps-overlay"></div>
+    <div class="dialog" id="apps-dialog">
+        <div class="dialog-header">
+            <div class="dialog-title">Applications</div>
+            <button class="dialog-close" id="close-apps">×</button>
+        </div>
+        <div class="dialog-content">
+            <div class="control-section">
+                <div class="control-section-label">Available Apps</div>
+                <input type="text" id="app-search" placeholder="Search apps..." style="width: 100%; margin-bottom: 10px; padding: 8px; background: var(--bg-tertiary); border: 1px solid var(--border); color: var(--text-primary); border-radius: 4px; font-family: inherit; font-size: 0.85em;">
+                <div id="apps-list" style="max-height: 400px; overflow-y: auto; border: 1px solid var(--border); border-radius: 4px; background: var(--bg-tertiary);">
+                    <div style="padding: 20px; text-align: center; color: var(--text-secondary);">Loading apps...</div>
+                </div>
             </div>
         </div>
     </div>

@@ -370,13 +370,23 @@ select:hover {
     transform: translate(-50%, -50%);
     width: 90%;
     max-width: 500px;
-    max-height: 80vh;
+    max-height: calc(var(--vh, 100vh) * 0.8);
     background: var(--bg-secondary);
     border: 1px solid var(--border);
     border-radius: 8px;
     z-index: 1501;
     box-shadow: 0 10px 40px rgba(0, 0, 0, 0.8);
     overflow: hidden;
+}
+
+@media (max-width: 768px) {
+    .dialog {
+        /* On mobile, position from top instead of center to avoid keyboard issues */
+        top: 10%;
+        transform: translate(-50%, 0);
+        max-height: calc(var(--vh, 100vh) * 0.75);
+        width: 95%;
+    }
 }
 
 .dialog.active {
@@ -479,4 +489,31 @@ select:hover {
         bottom: calc(20px + env(safe-area-inset-bottom));
         right: 20px;
     }
+}
+
+/* Applications List */
+.app-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px;
+    border-bottom: 1px solid var(--border);
+    transition: background 0.2s;
+}
+
+.app-item:hover {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.app-item:last-child {
+    border-bottom: none;
+}
+
+.app-launch-btn {
+    flex-shrink: 0;
+    font-family: inherit;
+}
+
+.app-launch-btn:hover {
+    opacity: 0.9;
 }

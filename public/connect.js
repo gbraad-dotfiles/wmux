@@ -43,24 +43,55 @@ term.open(document.getElementById('terminal'));
 term.onSelectionChange(() => {
     const selection = term.getSelection();
     if (selection) {
-        navigator.clipboard.writeText(selection).catch(err => {
-            console.log('Copy failed:', err);
-        });
+        // Try modern clipboard API
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(selection).catch(err => {
+                console.log('Modern clipboard failed, using fallback:', err);
+                copyToClipboardFallback(selection);
+            });
+        } else {
+            copyToClipboardFallback(selection);
+        }
     }
 });
+
+function copyToClipboardFallback(text) {
+    const textarea = document.createElement('textarea');
+    textarea.value = text;
+    textarea.style.position = 'fixed';
+    textarea.style.opacity = '0';
+    document.body.appendChild(textarea);
+    textarea.select();
+    try {
+        document.execCommand('copy');
+        console.log('Copied via fallback');
+    } catch (err) {
+        console.error('Fallback copy failed:', err);
+    }
+    document.body.removeChild(textarea);
+}
 
 // Clipboard support - Paste
 async function pasteFromClipboard() {
     try {
         const text = await navigator.clipboard.readText();
-        if (text && connected && sessionActive) {
-            send({
-                type: 'input',
-                data: btoa(text)
-            });
+        if (text) {
+            if (connected && sessionActive) {
+                send({
+                    type: 'input',
+                    data: btoa(text)
+                });
+                console.log('Pasted:', text.substring(0, 50) + (text.length > 50 ? '...' : ''));
+            } else {
+                console.log('Not connected or no active session');
+            }
         }
     } catch (err) {
-        console.log('Paste failed:', err);
+        console.error('Paste failed:', err);
+        // Fallback: show message in terminal
+        if (sessionActive) {
+            term.write('\r\n\x1b[33mClipboard access denied. Please grant clipboard permissions.\x1b[0m\r\n');
+        }
     }
 }
 
@@ -73,13 +104,32 @@ document.addEventListener('paste', async (e) => {
 });
 
 // Desktop keyboard shortcuts
-document.addEventListener('keydown', (e) => {
+document.addEventListener('keydown', async (e) => {
     // Ctrl+Shift+V or Cmd+Shift+V for paste
     if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'V') {
         e.preventDefault();
-        pasteFromClipboard();
+        console.log('Ctrl+Shift+V detected');
+        await pasteFromClipboard();
     }
-    // Ctrl+Shift+C or Cmd+Shift+C for copy (already handled by onSelectionChange)
+    // Shift+Insert for paste (traditional terminal shortcut)
+    if (e.shiftKey && e.key === 'Insert') {
+        e.preventDefault();
+        console.log('Shift+Insert detected');
+        await pasteFromClipboard();
+    }
+    // Ctrl+Insert for copy (traditional terminal shortcut)
+    if (e.ctrlKey && e.key === 'Insert') {
+        e.preventDefault();
+        const selection = term.getSelection();
+        if (selection) {
+            try {
+                await navigator.clipboard.writeText(selection);
+                console.log('Copied via Ctrl+Insert');
+            } catch (err) {
+                console.error('Copy failed:', err);
+            }
+        }
+    }
 });
 
 // Mobile keyboard handling
@@ -525,11 +575,12 @@ function connect() {
         connected = false;
         ws = null;
 
-        // Auto-reconnect with exponential backoff (slower growth: 1s, 1.5s, 2.25s, ... up to 30s)
+        // Auto-reconnect with backoff: 1s, 2s, 3s, 5s, 10s, 15s, 30s, 30s...
         if (reconnectAttempts < maxReconnectAttempts) {
-            const delay = Math.min(1000 * Math.pow(1.5, reconnectAttempts), 30000);
+            const delays = [1000, 2000, 3000, 5000, 10000, 15000, 30000];
+            const delay = delays[Math.min(reconnectAttempts, delays.length - 1)];
             reconnectAttempts++;
-            term.write(`\x1b[33mReconnecting in ${(delay/1000).toFixed(1)}s (attempt ${reconnectAttempts}/${maxReconnectAttempts})...\x1b[0m\r\n`);
+            term.write(`\x1b[33mReconnecting in ${delay/1000}s (attempt ${reconnectAttempts}/${maxReconnectAttempts})...\x1b[0m\r\n`);
             updateStatus(`Reconnecting (${reconnectAttempts}/${maxReconnectAttempts})...`, false);
 
             reconnectTimeout = setTimeout(() => {
@@ -679,6 +730,122 @@ sessionsOverlay.addEventListener('click', () => {
     sessionsDialog.classList.remove('active');
     sessionsOverlay.classList.remove('active');
 });
+
+// Applications dialog
+let appsCache = [];
+let defaultSession = 'screen';
+
+// Fetch config
+fetch('/api/config')
+    .then(r => r.json())
+    .then(config => {
+        if (config.defaultSession) {
+            defaultSession = config.defaultSession;
+        }
+    })
+    .catch(err => console.log('Config fetch failed:', err));
+
+const appsBtn = document.getElementById('apps-btn');
+const closeApps = document.getElementById('close-apps');
+const appsDialog = document.getElementById('apps-dialog');
+const appsOverlay = document.getElementById('apps-overlay');
+const appsList = document.getElementById('apps-list');
+const appSearch = document.getElementById('app-search');
+
+async function loadApps() {
+    try {
+        const response = await fetch('/api/apps');
+        const data = await response.json();
+        appsCache = data.apps || [];
+        renderApps(appsCache);
+    } catch (err) {
+        appsList.innerHTML = '<div style="padding: 20px; text-align: center; color: var(--accent);">Failed to load apps. Is amux running?</div>';
+        console.error('Failed to load apps:', err);
+    }
+}
+
+function renderApps(apps) {
+    if (apps.length === 0) {
+        appsList.innerHTML = '<div style="padding: 20px; text-align: center; color: var(--text-secondary);">No apps found</div>';
+        return;
+    }
+
+    appsList.innerHTML = apps.map(app => `
+        <div class="app-item" data-app="${app.name}">
+            <div style="flex: 1;">
+                <div style="font-weight: 500; color: var(--text-primary);">${app.title || app.name}</div>
+                <div style="font-size: 0.75em; color: var(--text-secondary); margin-top: 2px;">${app.name}</div>
+            </div>
+            <button class="app-launch-btn" data-app="${app.name}" style="background: var(--accent); color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 0.85em;">Launch</button>
+        </div>
+    `).join('');
+
+    // Add launch handlers
+    appsList.querySelectorAll('.app-launch-btn').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            const appName = btn.dataset.app;
+            await launchApp(appName);
+        });
+    });
+}
+
+async function launchApp(appName) {
+    try {
+        const response = await fetch(`/api/apps/${appName}/run`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ target: currentSessionName || defaultSession })
+        });
+        const result = await response.json();
+
+        if (result.status === 'success') {
+            // Close apps dialog
+            appsDialog.classList.remove('active');
+            appsOverlay.classList.remove('active');
+
+            // Refresh windows list
+            send({ type: 'list_windows' });
+        } else {
+            console.error('Launch failed:', result);
+        }
+    } catch (err) {
+        console.error('Failed to launch app:', err);
+    }
+}
+
+if (appsBtn) {
+    appsBtn.addEventListener('click', () => {
+        loadApps();
+        appsDialog.classList.add('active');
+        appsOverlay.classList.add('active');
+    });
+}
+
+if (closeApps) {
+    closeApps.addEventListener('click', () => {
+        appsDialog.classList.remove('active');
+        appsOverlay.classList.remove('active');
+    });
+}
+
+if (appsOverlay) {
+    appsOverlay.addEventListener('click', () => {
+        appsDialog.classList.remove('active');
+        appsOverlay.classList.remove('active');
+    });
+}
+
+if (appSearch) {
+    appSearch.addEventListener('input', (e) => {
+        const query = e.target.value.toLowerCase();
+        const filtered = appsCache.filter(app =>
+            app.name.toLowerCase().includes(query) ||
+            (app.title && app.title.toLowerCase().includes(query))
+        );
+        renderApps(filtered);
+    });
+}
 
 // Font size control
 const fontSizeSlider = document.getElementById('font-size');
