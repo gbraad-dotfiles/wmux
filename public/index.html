@@ -169,23 +169,20 @@
         <div class="dialog-overlay" id="windows-overlay"></div>
         <div class="dialog" id="windows-dialog">
             <div class="dialog-header">
-                <div class="dialog-title">Windows</div>
+                <div class="dialog-title">
+                    Windows
+                    <span id="window-search-query" style="margin-left: 10px; color: #0066FF; font-size: 0.9em; font-weight: normal;"></span>
+                </div>
                 <button class="dialog-close" id="close-windows">×</button>
             </div>
-            <div class="dialog-content">
-                <div class="control-section">
-                    <div class="control-section-label">Window Management</div>
-                    <div class="control-buttons">
-                        <button id="new-window" class="control-btn">New</button>
-                        <button id="next-window" class="control-btn">Next</button>
-                        <button id="prev-window" class="control-btn">Previous</button>
-                    </div>
+            <div class="dialog-content" style="display: flex; flex-direction: column;">
+                <div id="windows-list" style="flex: 1; height: 400px; min-height: 400px; max-height: 400px; overflow-y: auto; border: 1px solid var(--border); border-radius: 4px; background: var(--bg-tertiary); margin-bottom: 15px;">
+                    <div style="text-align: center; color: var(--text-secondary); padding: 20px;">No windows available</div>
                 </div>
-                <div class="control-section">
-                    <div class="control-section-label">Switch to Window</div>
-                    <div id="windows-list" style="max-height: 300px; overflow-y: auto;">
-                        <div style="text-align: center; color: var(--text-secondary); padding: 20px;">No windows available</div>
-                    </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px;">
+                    <button id="prev-window" class="control-btn" style="font-size: 1.2em;">&lt;</button>
+                    <button id="new-window" class="control-btn" style="font-size: 1.2em;">+</button>
+                    <button id="next-window" class="control-btn" style="font-size: 1.2em;">&gt;</button>
                 </div>
             </div>
         </div>
@@ -232,24 +229,19 @@
         <div class="dialog-overlay" id="sessions-overlay"></div>
         <div class="dialog" id="sessions-dialog">
             <div class="dialog-header">
-                <div class="dialog-title">Sessions</div>
+                <div class="dialog-title">
+                    Sessions
+                    <span id="session-search-query" style="margin-left: 10px; color: #0066FF; font-size: 0.9em; font-weight: normal;"></span>
+                </div>
                 <button class="dialog-close" id="close-sessions">×</button>
             </div>
-            <div class="dialog-content">
-                <div class="control-section">
-                    <div class="control-section-label">Existing Sessions</div>
-                    <select id="session-select" style="width: 100%; margin-bottom: 10px; padding: 8px; background: var(--bg-tertiary); border: 1px solid var(--border); color: var(--text-primary); border-radius: 4px; font-family: inherit; font-size: 0.85em;">
-                        <option value="">Loading...</option>
-                    </select>
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
-                        <button id="attach-btn" class="control-btn">Attach</button>
-                        <button id="kill-session-btn" class="control-btn" style="background: var(--accent); border-color: var(--accent);">Kill</button>
-                    </div>
+            <div class="dialog-content" style="display: flex; flex-direction: column;">
+                <div id="sessions-list" style="flex: 1; height: 400px; min-height: 400px; max-height: 400px; overflow-y: auto; border: 1px solid var(--border); border-radius: 4px; background: var(--bg-tertiary); margin-bottom: 15px;">
+                    <div style="text-align: center; color: var(--text-secondary); padding: 20px;">Loading sessions...</div>
                 </div>
-                <div class="control-section">
-                    <div class="control-section-label">Create New Session</div>
-                    <input type="text" id="new-session-name" placeholder="wmux_new" style="width: 100%; margin-bottom: 10px; padding: 8px; background: var(--bg-tertiary); border: 1px solid var(--border); color: var(--text-primary); border-radius: 4px; font-family: inherit; font-size: 0.85em;">
-                    <button id="create-btn" class="control-btn">Create New Session</button>
+                <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 10px;">
+                    <input type="text" id="new-session-name" placeholder="New session name..." style="padding: 10px; background: var(--bg-tertiary); border: 1px solid var(--border); color: var(--text-primary); border-radius: 4px; font-family: inherit; font-size: 0.85em;">
+                    <button id="create-btn" class="control-btn" style="font-size: 1.2em;">+</button>
                 </div>
             </div>
         </div>
@@ -264,7 +256,7 @@
                 <div class="control-section">
                     <div class="control-section-label">
                         Available Apps
-                        <span id="app-search-query" style="margin-left: 10px; color: var(--accent); font-size: 0.9em; font-weight: normal;"></span>
+                        <span id="app-search-query" style="margin-left: 10px; color: #0066FF; font-size: 0.9em; font-weight: normal;"></span>
                     </div>
                     <div id="apps-list" style="height: 400px; min-height: 400px; max-height: 400px; overflow-y: auto; border: 1px solid var(--border); border-radius: 4px; background: var(--bg-tertiary);">
                         <div style="padding: 20px; text-align: center; color: var(--text-secondary);">Loading apps...</div>

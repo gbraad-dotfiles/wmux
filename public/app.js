@@ -97,6 +97,21 @@ function setupEventListeners() {
             return;
         }
 
+        // Check if windows dialog is handling this event
+        if (handleWindowsKeydown(e)) {
+            return;
+        }
+
+        // Check if sessions dialog is handling this event
+        if (handleSessionsKeydown(e)) {
+            return;
+        }
+
+        // Check if panes dialog is handling this event
+        if (handlePanesKeydown(e)) {
+            return;
+        }
+
         // ESC closes any open dialog
         if (e.key === 'Escape') {
             const activeDialogs = [
@@ -134,12 +149,11 @@ function setupEventListeners() {
             }
         }
 
+        // Don't intercept shortcuts if user is typing in an input field
+        const isTyping = e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA';
+
         // Ctrl+A to open Apps dialog
-        if (e.ctrlKey && e.key === 'a' && !e.shiftKey && !e.metaKey) {
-            // Don't intercept if user is typing in an input field
-            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
-                return;
-            }
+        if (e.ctrlKey && e.key === 'a' && !e.shiftKey && !e.metaKey && !isTyping) {
             e.preventDefault();
             const appsDialog = document.getElementById('apps-dialog');
             const appsOverlay = document.getElementById('apps-overlay');
@@ -150,6 +164,43 @@ function setupEventListeners() {
                 appsDialog.classList.add('active');
                 appsOverlay.classList.add('active');
                 performAppSearch('');
+            }
+        }
+
+        // Ctrl+W to open Windows dialog
+        if (e.ctrlKey && e.key === 'w' && !e.shiftKey && !e.metaKey && !isTyping) {
+            e.preventDefault();
+            const windowsDialog = document.getElementById('windows-dialog');
+            const windowsOverlay = document.getElementById('windows-overlay');
+            if (windowsDialog && windowsOverlay && sessionActive) {
+                send({ type: 'list_windows' });
+                windowSearchQuery = '';
+                selectedWindowIndex = 0;
+                windowsDialog.classList.add('active');
+                windowsOverlay.classList.add('active');
+            }
+        }
+
+        // Ctrl+P to open Panes dialog
+        if (e.ctrlKey && e.key === 'p' && !e.shiftKey && !e.metaKey && !isTyping) {
+            e.preventDefault();
+            const controlsDialog = document.getElementById('controls-dialog');
+            const controlsOverlay = document.getElementById('controls-overlay');
+            if (controlsDialog && controlsOverlay && sessionActive) {
+                controlsDialog.classList.add('active');
+                controlsOverlay.classList.add('active');
+            }
+        }
+
+        // Ctrl+S to open Sessions dialog
+        if (e.ctrlKey && (e.key === 's' || e.key === 'S') && !e.shiftKey && !e.metaKey && !isTyping) {
+            e.preventDefault();
+            const sessionsDialog = document.getElementById('sessions-dialog');
+            const sessionsOverlay = document.getElementById('sessions-overlay');
+            if (sessionsDialog && sessionsOverlay) {
+                send({ type: 'list' });
+                sessionsDialog.classList.add('active');
+                sessionsOverlay.classList.add('active');
             }
         }
         // Ctrl+Shift+V or Cmd+Shift+V for paste
@@ -447,86 +498,230 @@ function updateStatus(text, isConnected = false) {
     connected = isConnected;
 }
 
-function updateSessionList(sessions) {
-    const select = document.getElementById('session-select');
-    select.innerHTML = '';
+function renderSessions(sessions) {
+    const listEl = document.getElementById('sessions-list');
+    filteredSessions = sessions;
 
-    if (sessions && sessions.length > 0) {
-        sessions.forEach(s => {
-            const opt = document.createElement('option');
-            opt.value = s;
-            // Mark active session
-            if (s === currentSessionName) {
-                opt.textContent = s + ' (active)';
-                opt.style.fontWeight = 'bold';
-                opt.style.color = 'var(--accent)';
-            } else {
-                opt.textContent = s;
-            }
-            select.appendChild(opt);
-        });
-        // Select the active session in dropdown
-        if (currentSessionName) {
-            select.value = currentSessionName;
-        }
-    } else {
-        const opt = document.createElement('option');
-        opt.value = '';
-        opt.textContent = 'No sessions available';
-        select.appendChild(opt);
+    if (!sessions || sessions.length === 0) {
+        listEl.innerHTML = '<div style="text-align: center; color: var(--text-secondary); padding: 20px;">No sessions available</div>';
+        return;
     }
-    updateKillButtonState();
+
+    // Ensure selected index is within bounds
+    if (selectedSessionIndex >= sessions.length) {
+        selectedSessionIndex = sessions.length - 1;
+    }
+    if (selectedSessionIndex < 0) {
+        selectedSessionIndex = 0;
+    }
+
+    listEl.innerHTML = sessions.map((sessionName, idx) => {
+        const isSelected = idx === selectedSessionIndex;
+        const isActive = sessionName === currentSessionName;
+        const isDefault = sessionName === defaultSessionName;
+
+        let displayText = sessionName;
+        if (isActive) displayText += ' (active)';
+        if (isDefault) displayText += ' (default)';
+
+        const highlightedText = highlightMatches(displayText, sessionSearchQuery);
+
+        return `
+            <div class="app-item session-item" data-index="${idx}" data-session="${sessionName}" style="cursor: pointer; ${isSelected ? 'background: var(--accent); border-color: var(--accent);' : (isActive ? 'background: #2a2a2a;' : '')}">
+                <div style="flex: 1; color: var(--text-primary);">${highlightedText}</div>
+                ${!isDefault && !isActive ? `<button class="session-kill-btn" data-session="${sessionName}" style="background: var(--accent); color: white; border: 1px solid var(--accent); padding: 4px 8px; border-radius: 4px; cursor: pointer; font-size: 0.75em;">Kill</button>` : ''}
+            </div>
+        `;
+    }).join('');
+
+    // Add click handlers for sessions
+    listEl.querySelectorAll('.session-item').forEach(item => {
+        item.addEventListener('click', (e) => {
+            // Don't trigger if clicking kill button
+            if (e.target.classList.contains('session-kill-btn')) {
+                return;
+            }
+            const sessionName = item.dataset.session;
+            attachToSession(sessionName);
+        });
+    });
+
+    // Add click handlers for kill buttons
+    listEl.querySelectorAll('.session-kill-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const sessionName = btn.dataset.session;
+            showConfirmKill(sessionName);
+        });
+    });
+
+    // Scroll selected item into view
+    const selectedItem = listEl.querySelector(`[data-index="${selectedSessionIndex}"]`);
+    if (selectedItem) {
+        selectedItem.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }
 }
 
-function updateKillButtonState() {
-    const killBtn = document.getElementById('kill-session-btn');
-    const select = document.getElementById('session-select');
-    const selectedSession = select.value;
-
-    if (!killBtn) return;
-
-    // Disable kill button if:
-    // - No session selected
-    // - Selected session is the default session
-    // - Selected session is the currently active session
-    const shouldDisable = !selectedSession ||
-                         selectedSession === defaultSessionName ||
-                         selectedSession === currentSessionName;
-
-    killBtn.disabled = shouldDisable;
-    if (shouldDisable) {
-        killBtn.style.opacity = '0.5';
-        killBtn.style.cursor = 'not-allowed';
-    } else {
-        killBtn.style.opacity = '1';
-        killBtn.style.cursor = 'pointer';
+function performSessionSearch(query) {
+    sessionSearchQuery = query;
+    const queryDisplay = document.getElementById('session-search-query');
+    if (queryDisplay) {
+        queryDisplay.textContent = query ? `"${query}"` : '';
     }
+
+    if (!query) {
+        selectedSessionIndex = 0;
+        renderSessions(sessionsCache);
+        return;
+    }
+
+    // Fuzzy search
+    const results = sessionsCache.map((sessionName, idx) => {
+        let displayText = sessionName;
+        if (sessionName === currentSessionName) displayText += ' (active)';
+        if (sessionName === defaultSessionName) displayText += ' (default)';
+
+        const match = fuzzyMatch(query, displayText);
+
+        return {
+            sessionName,
+            match: match.match,
+            score: match.score,
+            originalIndex: idx
+        };
+    }).filter(r => r.match)
+      .sort((a, b) => b.score - a.score)
+      .map(r => r.sessionName);
+
+    selectedSessionIndex = 0;
+    renderSessions(results);
+}
+
+function updateSessionList(sessions) {
+    sessionsCache = sessions || [];
+    renderSessions(sessionsCache);
+}
+
+function attachToSession(sessionName) {
+    if (!sessionName) return;
+
+    // If already in a session, disconnect first
+    if (sessionActive) {
+        send({ type: 'disconnect' });
+        sessionActive = false;
+        currentSessionName = null;
+    }
+
+    term.reset();
+    term.clear();
+
+    // Ensure terminal is properly sized before starting
+    fitAddon.fit();
+
+    // Small delay to ensure fit is applied
+    setTimeout(() => {
+        console.log(`Starting session - cols: ${term.cols}, rows: ${term.rows}`);
+        send({
+            type: 'start',
+            session: sessionName,
+            newSession: false,
+            rows: term.rows,
+            cols: term.cols
+        });
+        updateDebugInfo();
+    }, 100);
+
+    const sessionsDialog = document.getElementById('sessions-dialog');
+    const sessionsOverlay = document.getElementById('sessions-overlay');
+    sessionsDialog.classList.remove('active');
+    sessionsOverlay.classList.remove('active');
+    sessionSearchQuery = '';
+    selectedSessionIndex = 0;
+}
+
+function renderWindows(windows) {
+    const listEl = document.getElementById('windows-list');
+    filteredWindows = windows;
+
+    if (!windows || windows.length === 0) {
+        listEl.innerHTML = '<div style="text-align: center; color: var(--text-secondary); padding: 20px;">No windows available</div>';
+        return;
+    }
+
+    // Ensure selected index is within bounds
+    if (selectedWindowIndex >= windows.length) {
+        selectedWindowIndex = windows.length - 1;
+    }
+    if (selectedWindowIndex < 0) {
+        selectedWindowIndex = 0;
+    }
+
+    listEl.innerHTML = windows.map((w, idx) => {
+        const isSelected = idx === selectedWindowIndex;
+        const displayText = `${w.index}: ${w.name}${w.active ? ' *' : ''}`;
+        const highlightedText = highlightMatches(displayText, windowSearchQuery);
+
+        return `
+            <div class="app-item window-item" data-index="${idx}" data-window-index="${w.index}" style="cursor: pointer; ${isSelected ? 'background: var(--accent); border-color: var(--accent);' : (w.active ? 'background: #2a2a2a;' : '')}">
+                <div style="flex: 1; color: var(--text-primary);">${highlightedText}</div>
+            </div>
+        `;
+    }).join('');
+
+    // Add click handlers
+    listEl.querySelectorAll('.window-item').forEach(item => {
+        item.addEventListener('click', () => {
+            const windowIndex = item.dataset.windowIndex;
+            send({ type: 'select_window', index: parseInt(windowIndex) });
+            windowsDialog.classList.remove('active');
+            windowsOverlay.classList.remove('active');
+            windowSearchQuery = '';
+            selectedWindowIndex = 0;
+        });
+    });
+
+    // Scroll selected item into view
+    const selectedItem = listEl.querySelector(`[data-index="${selectedWindowIndex}"]`);
+    if (selectedItem) {
+        selectedItem.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }
+}
+
+function performWindowSearch(query) {
+    windowSearchQuery = query;
+    const queryDisplay = document.getElementById('window-search-query');
+    if (queryDisplay) {
+        queryDisplay.textContent = query ? `"${query}"` : '';
+    }
+
+    if (!query) {
+        selectedWindowIndex = 0;
+        renderWindows(windowsCache);
+        return;
+    }
+
+    // Fuzzy search
+    const results = windowsCache.map((w, idx) => {
+        const displayText = `${w.index}: ${w.name}`;
+        const match = fuzzyMatch(query, displayText);
+
+        return {
+            window: w,
+            match: match.match,
+            score: match.score,
+            originalIndex: idx
+        };
+    }).filter(r => r.match)
+      .sort((a, b) => b.score - a.score)
+      .map(r => r.window);
+
+    selectedWindowIndex = 0;
+    renderWindows(results);
 }
 
 function updateWindowsList(windows) {
-    const listEl = document.getElementById('windows-list');
-    listEl.innerHTML = '';
-
-    if (windows && windows.length > 0) {
-        windows.forEach(w => {
-            const btn = document.createElement('button');
-            btn.className = 'control-btn';
-            btn.style.cssText = 'width: 100%; margin-bottom: 8px; text-align: left; padding: 12px;';
-            if (w.active) {
-                btn.style.background = 'var(--accent)';
-                btn.style.borderColor = 'var(--accent)';
-            }
-            btn.textContent = `${w.index}: ${w.name}${w.active ? ' *' : ''}`;
-            btn.addEventListener('click', () => {
-                send({ type: 'select_window', index: w.index });
-                windowsDialog.classList.remove('active');
-                windowsOverlay.classList.remove('active');
-            });
-            listEl.appendChild(btn);
-        });
-    } else {
-        listEl.innerHTML = '<div style="text-align: center; color: var(--text-secondary); padding: 20px;">No windows available</div>';
-    }
+    windowsCache = windows || [];
+    renderWindows(windowsCache);
 }
 
 function connect() {
@@ -777,6 +972,7 @@ const windowsDialog = document.getElementById('windows-dialog');
 const windowsOverlay = document.getElementById('windows-overlay');
 
 controlsBtn.addEventListener('click', () => {
+    highlightPaneButton(null);
     controlsDialog.classList.add('active');
     controlsOverlay.classList.add('active');
 });
@@ -793,6 +989,8 @@ controlsOverlay.addEventListener('click', () => {
 
 windowsBtn.addEventListener('click', () => {
     // Refresh window list when opening
+    windowSearchQuery = '';
+    selectedWindowIndex = 0;
     send({ type: 'list_windows' });
     windowsDialog.classList.add('active');
     windowsOverlay.classList.add('active');
@@ -801,11 +999,15 @@ windowsBtn.addEventListener('click', () => {
 closeWindows.addEventListener('click', () => {
     windowsDialog.classList.remove('active');
     windowsOverlay.classList.remove('active');
+    windowSearchQuery = '';
+    selectedWindowIndex = 0;
 });
 
 windowsOverlay.addEventListener('click', () => {
     windowsDialog.classList.remove('active');
     windowsOverlay.classList.remove('active');
+    windowSearchQuery = '';
+    selectedWindowIndex = 0;
 });
 
 // Sessions dialog toggle
@@ -816,6 +1018,8 @@ const sessionsOverlay = document.getElementById('sessions-overlay');
 
 sessionsBtn.addEventListener('click', () => {
     // Refresh session list when opening
+    sessionSearchQuery = '';
+    selectedSessionIndex = 0;
     send({ type: 'list' });
     sessionsDialog.classList.add('active');
     sessionsOverlay.classList.add('active');
@@ -824,11 +1028,15 @@ sessionsBtn.addEventListener('click', () => {
 closeSessions.addEventListener('click', () => {
     sessionsDialog.classList.remove('active');
     sessionsOverlay.classList.remove('active');
+    sessionSearchQuery = '';
+    selectedSessionIndex = 0;
 });
 
 sessionsOverlay.addEventListener('click', () => {
     sessionsDialog.classList.remove('active');
     sessionsOverlay.classList.remove('active');
+    sessionSearchQuery = '';
+    selectedSessionIndex = 0;
 });
 
 // Applications dialog
@@ -837,6 +1045,18 @@ let filteredApps = [];
 let selectedAppIndex = 0;
 let appSearchQuery = '';
 let defaultSession = 'screen';
+
+// Windows dialog
+let windowsCache = [];
+let filteredWindows = [];
+let selectedWindowIndex = 0;
+let windowSearchQuery = '';
+
+// Sessions dialog
+let sessionsCache = [];
+let filteredSessions = [];
+let selectedSessionIndex = 0;
+let sessionSearchQuery = '';
 
 // Fetch config
 fetch('/api/config')
@@ -876,7 +1096,7 @@ function highlightMatches(text, query) {
 
     for (let i = 0; i < text.length && queryIdx < queryLower.length; i++) {
         if (textLower[i] === queryLower[queryIdx]) {
-            result += `<span style="color: var(--accent); font-weight: bold;">${text[i]}</span>`;
+            result += `<span style="color: #0066FF; font-weight: bold;">${text[i]}</span>`;
             queryIdx++;
         } else {
             result += text[i];
@@ -1019,6 +1239,213 @@ function handleAppsKeydown(e) {
     return false;
 }
 
+// Windows dialog keyboard navigation
+function handleWindowsKeydown(e) {
+    const windowsDialog = document.getElementById('windows-dialog');
+    if (!windowsDialog || !windowsDialog.classList.contains('active')) {
+        return false;
+    }
+
+    // Handle navigation keys
+    if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        selectedWindowIndex = Math.min(selectedWindowIndex + 1, filteredWindows.length - 1);
+        renderWindows(filteredWindows);
+        return true;
+    }
+
+    if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        selectedWindowIndex = Math.max(selectedWindowIndex - 1, 0);
+        renderWindows(filteredWindows);
+        return true;
+    }
+
+    if (e.key === 'Enter') {
+        e.preventDefault();
+        if (filteredWindows.length > 0 && selectedWindowIndex >= 0 && selectedWindowIndex < filteredWindows.length) {
+            const selectedWindow = filteredWindows[selectedWindowIndex];
+            send({ type: 'select_window', index: selectedWindow.index });
+            windowsDialog.classList.remove('active');
+            document.getElementById('windows-overlay').classList.remove('active');
+            windowSearchQuery = '';
+            selectedWindowIndex = 0;
+        }
+        return true;
+    }
+
+    if (e.key === 'Escape') {
+        e.preventDefault();
+        windowsDialog.classList.remove('active');
+        document.getElementById('windows-overlay').classList.remove('active');
+        windowSearchQuery = '';
+        selectedWindowIndex = 0;
+        return true;
+    }
+
+    if (e.key === 'Backspace') {
+        e.preventDefault();
+        windowSearchQuery = windowSearchQuery.slice(0, -1);
+        performWindowSearch(windowSearchQuery);
+        return true;
+    }
+
+    // Handle typing (single printable characters)
+    if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        e.preventDefault();
+        windowSearchQuery += e.key;
+        performWindowSearch(windowSearchQuery);
+        return true;
+    }
+
+    return false;
+}
+
+// Sessions dialog keyboard navigation
+function handleSessionsKeydown(e) {
+    const sessionsDialog = document.getElementById('sessions-dialog');
+    if (!sessionsDialog || !sessionsDialog.classList.contains('active')) {
+        return false;
+    }
+
+    // Don't handle if typing in the new session name input
+    if (e.target.id === 'new-session-name') {
+        return false;
+    }
+
+    // Handle navigation keys
+    if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        selectedSessionIndex = Math.min(selectedSessionIndex + 1, filteredSessions.length - 1);
+        renderSessions(filteredSessions);
+        return true;
+    }
+
+    if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        selectedSessionIndex = Math.max(selectedSessionIndex - 1, 0);
+        renderSessions(filteredSessions);
+        return true;
+    }
+
+    if (e.key === 'Enter') {
+        e.preventDefault();
+        if (filteredSessions.length > 0 && selectedSessionIndex >= 0 && selectedSessionIndex < filteredSessions.length) {
+            const selectedSession = filteredSessions[selectedSessionIndex];
+            attachToSession(selectedSession);
+        }
+        return true;
+    }
+
+    if (e.key === 'Escape') {
+        e.preventDefault();
+        sessionsDialog.classList.remove('active');
+        document.getElementById('sessions-overlay').classList.remove('active');
+        sessionSearchQuery = '';
+        selectedSessionIndex = 0;
+        return true;
+    }
+
+    if (e.key === 'Backspace') {
+        e.preventDefault();
+        sessionSearchQuery = sessionSearchQuery.slice(0, -1);
+        performSessionSearch(sessionSearchQuery);
+        return true;
+    }
+
+    // Handle typing (single printable characters)
+    if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        e.preventDefault();
+        sessionSearchQuery += e.key;
+        performSessionSearch(sessionSearchQuery);
+        return true;
+    }
+
+    return false;
+}
+
+// Panes dialog keyboard navigation
+let selectedPaneAction = null; // 'split-h', 'split-v', 'close-pane', 'zoom-pane'
+
+function highlightPaneButton(action) {
+    // Remove all highlights
+    ['split-h', 'split-v', 'close-pane', 'zoom-pane'].forEach(id => {
+        const btn = document.getElementById(id);
+        if (btn) {
+            btn.style.background = 'var(--bg-tertiary)';
+            btn.style.borderColor = 'var(--border)';
+        }
+    });
+
+    // Highlight selected
+    if (action) {
+        const btn = document.getElementById(action);
+        if (btn) {
+            btn.style.background = 'var(--accent)';
+            btn.style.borderColor = 'var(--accent)';
+        }
+    }
+    selectedPaneAction = action;
+}
+
+function handlePanesKeydown(e) {
+    const controlsDialog = document.getElementById('controls-dialog');
+    if (!controlsDialog || !controlsDialog.classList.contains('active')) {
+        return false;
+    }
+
+    // H for Horizontal split
+    if (e.key === 'h' || e.key === 'H') {
+        e.preventDefault();
+        highlightPaneButton('split-h');
+        return true;
+    }
+
+    // V for Vertical split
+    if (e.key === 'v' || e.key === 'V') {
+        e.preventDefault();
+        highlightPaneButton('split-v');
+        return true;
+    }
+
+    // C for Close pane
+    if (e.key === 'c' || e.key === 'C') {
+        e.preventDefault();
+        highlightPaneButton('close-pane');
+        return true;
+    }
+
+    // Z for Zoom toggle
+    if (e.key === 'z' || e.key === 'Z') {
+        e.preventDefault();
+        highlightPaneButton('zoom-pane');
+        return true;
+    }
+
+    // Enter to activate selected button
+    if (e.key === 'Enter') {
+        e.preventDefault();
+        if (selectedPaneAction) {
+            const btn = document.getElementById(selectedPaneAction);
+            if (btn) {
+                btn.click();
+            }
+        }
+        return true;
+    }
+
+    // Escape to close
+    if (e.key === 'Escape') {
+        e.preventDefault();
+        controlsDialog.classList.remove('active');
+        document.getElementById('controls-overlay').classList.remove('active');
+        highlightPaneButton(null);
+        return true;
+    }
+
+    return false;
+}
+
 if (appsBtn) {
     appsBtn.addEventListener('click', () => {
         loadApps();
@@ -1155,43 +1582,6 @@ if (fontSizeSlider && fontSizeValue) {
 }
 
 // Session management
-document.getElementById('attach-btn').addEventListener('click', () => {
-    const sessionName = document.getElementById('session-select').value;
-    if (!sessionName) {
-        alert('No session selected');
-        return;
-    }
-
-    // If already in a session, disconnect first
-    if (sessionActive) {
-        send({ type: 'disconnect' });
-        sessionActive = false;
-        currentSessionName = null;
-    }
-
-    term.reset();
-    term.clear();
-
-    // Ensure terminal is properly sized before starting
-    fitAddon.fit();
-
-    // Small delay to ensure fit is applied
-    setTimeout(() => {
-        console.log(`Starting session - cols: ${term.cols}, rows: ${term.rows}`);
-        send({
-            type: 'start',
-            session: sessionName,
-            newSession: false,
-            rows: term.rows,
-            cols: term.cols
-        });
-        updateDebugInfo();
-    }, 100);
-
-    sessionsDialog.classList.remove('active');
-    sessionsOverlay.classList.remove('active');
-});
-
 document.getElementById('create-btn').addEventListener('click', () => {
     const sessionName = document.getElementById('new-session-name').value.trim() || `wmux_${Date.now()}`;
 
@@ -1221,13 +1611,13 @@ document.getElementById('create-btn').addEventListener('click', () => {
         updateDebugInfo();
     }, 100);
 
+    // Clear input
+    document.getElementById('new-session-name').value = '';
+
     sessionsDialog.classList.remove('active');
     sessionsOverlay.classList.remove('active');
-});
-
-// Session select change handler
-document.getElementById('session-select').addEventListener('change', () => {
-    updateKillButtonState();
+    sessionSearchQuery = '';
+    selectedSessionIndex = 0;
 });
 
 // Confirm kill dialog
@@ -1267,26 +1657,7 @@ confirmKillCancel.addEventListener('click', hideConfirmKill);
 closeConfirmKill.addEventListener('click', hideConfirmKill);
 confirmKillOverlay.addEventListener('click', hideConfirmKill);
 
-// Kill session button
-document.getElementById('kill-session-btn').addEventListener('click', () => {
-    const sessionName = document.getElementById('session-select').value;
-    if (!sessionName) {
-        return;
-    }
-
-    // Don't allow killing default or active sessions
-    if (sessionName === defaultSessionName) {
-        term.write('\x1b[31mCannot kill the default session\x1b[0m\r\n');
-        return;
-    }
-
-    if (sessionName === currentSessionName) {
-        term.write('\x1b[31mCannot kill the active session. Detach first.\x1b[0m\r\n');
-        return;
-    }
-
-    showConfirmKill(sessionName);
-});
+// Kill buttons are now in the session list items (rendered dynamically)
 
 document.getElementById('reconnect-btn').addEventListener('click', () => {
     // Clear any pending reconnect timeout
