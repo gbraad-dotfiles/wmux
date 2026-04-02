@@ -92,6 +92,12 @@ function setupEventListeners() {
 
     // Desktop keyboard shortcuts - use capture phase to intercept before terminal
     window.addEventListener('keydown', async (e) => {
+        // Check if hosts dialog is handling this event (from spa-router.js)
+        if (typeof window.handleHostsKeydown === 'function' && window.handleHostsKeydown(e)) {
+            e.stopPropagation();
+            return;
+        }
+
         // Check if apps dialog is handling this event
         if (handleAppsKeydown(e)) {
             e.stopPropagation();
@@ -119,6 +125,7 @@ function setupEventListeners() {
         // ESC closes any open dialog
         if (e.key === 'Escape') {
             const activeDialogs = [
+                { dialog: 'hosts-dialog', overlay: 'hosts-overlay' },
                 { dialog: 'apps-dialog', overlay: 'apps-overlay' },
                 { dialog: 'sessions-dialog', overlay: 'sessions-overlay' },
                 { dialog: 'windows-dialog', overlay: 'windows-overlay' },
@@ -184,6 +191,20 @@ function setupEventListeners() {
             if (prefixKeyTimeout) {
                 clearTimeout(prefixKeyTimeout);
                 prefixKeyTimeout = null;
+            }
+
+            // H for Hosts
+            if (e.key === 'h' || e.key === 'H') {
+                e.preventDefault();
+                e.stopPropagation();
+                const hostsDialog = document.getElementById('hosts-dialog');
+                const hostsOverlay = document.getElementById('hosts-overlay');
+                if (hostsDialog && hostsOverlay && typeof window.loadHostsDialog === 'function') {
+                    window.loadHostsDialog();
+                    hostsDialog.classList.add('active');
+                    hostsOverlay.classList.add('active');
+                }
+                return;
             }
 
             // A for Apps
