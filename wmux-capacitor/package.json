@@ -1,0 +1,25 @@
+{
+  "name": "wmux-capacitor",
+  "version": "1.0.0",
+  "description": "Mobile wmux",
+  "main": "index.js",
+  "scripts": {
+    "sync": "npx cap sync",
+    "open:android": "npx cap open android"
+  },
+  "keywords": [
+    "audio",
+    "tracker",
+    "capacitor"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@capacitor/android": "^6.0.0",
+    "@capacitor/cli": "^6.0.0",
+    "@capacitor/core": "^6.0.0"
+  },
+  "devDependencies": {
+    "@capacitor/assets": "^3.0.5"
+  }
+}

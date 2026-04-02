@@ -1,0 +1,8 @@
+{
+  "appId": "nl.gbraad.wmux",
+  "appName": "wmux",
+  "webDir": "www",
+  "android": {
+    "minWebViewVersion": 90
+  }
+}

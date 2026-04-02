@@ -1,0 +1,171 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Created with Inkscape (http://www.inkscape.org/) -->
+
+<svg
+   width="37"
+   height="37"
+   id="svg2"
+   version="1.1"
+   inkscape:version="1.4.2 (f4327f4, 2025-05-13)"
+   sodipodi:docname="icon.svg"
+   inkscape:export-filename="C:\Users\Gerard\Documents\Projects\artwork\artwork\motto\gbraad-peek-shadow-1024.png"
+   inkscape:export-xdpi="180"
+   inkscape:export-ydpi="180"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg"
+   xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+   xmlns:cc="http://creativecommons.org/ns#"
+   xmlns:dc="http://purl.org/dc/elements/1.1/">
+  <defs
+     id="defs4">
+    <filter
+       y="-0.10650786"
+       height="1.2130157"
+       inkscape:menu-tooltip="Darkens the edge with an inner blur and adds a flexible glow"
+       inkscape:menu="Shadows and Glows"
+       inkscape:label="Dark And Glow"
+       style="color-interpolation-filters:sRGB"
+       id="filter3499"
+       x="-0.10650786"
+       width="1.2130157">
+      <feGaussianBlur
+         stdDeviation="5"
+         result="result6"
+         id="feGaussianBlur3501" />
+      <feComposite
+         result="result8"
+         in="SourceGraphic"
+         operator="atop"
+         in2="result6"
+         id="feComposite3503" />
+      <feComposite
+         result="result9"
+         operator="over"
+         in2="SourceAlpha"
+         in="result8"
+         id="feComposite3505" />
+      <feColorMatrix
+         values="1 0 0 0 0 0 1 0 0 0 0 0 1 0 0 0 0 0 1 0 "
+         result="result10"
+         id="feColorMatrix3507" />
+      <feBlend
+         in="result10"
+         mode="normal"
+         in2="result6"
+         id="feBlend3509" />
+    </filter>
+    <filter
+       style="color-interpolation-filters:sRGB"
+       inkscape:label="Drop Shadow"
+       id="filter5855"
+       x="-0.063015386"
+       y="-0.053065588"
+       width="1.1785436"
+       height="1.1503525">
+      <feFlood
+         flood-opacity="0.498039"
+         flood-color="rgb(0,0,0)"
+         result="flood"
+         id="feFlood5857" />
+      <feComposite
+         in="flood"
+         in2="SourceGraphic"
+         operator="in"
+         result="composite1"
+         id="feComposite5859" />
+      <feGaussianBlur
+         in="composite1"
+         stdDeviation="3"
+         result="blur"
+         id="feGaussianBlur5861" />
+      <feOffset
+         dx="6"
+         dy="6"
+         result="offset"
+         id="feOffset5863" />
+      <feComposite
+         in="SourceGraphic"
+         in2="offset"
+         operator="over"
+         result="composite2"
+         id="feComposite5865" />
+    </filter>
+  </defs>
+  <sodipodi:namedview
+     id="base"
+     pagecolor="#ffffff"
+     bordercolor="#666666"
+     borderopacity="1.0"
+     inkscape:pageopacity="0.0"
+     inkscape:pageshadow="2"
+     inkscape:zoom="15.839192"
+     inkscape:cx="20.455589"
+     inkscape:cy="13.100416"
+     inkscape:document-units="px"
+     inkscape:current-layer="layer1"
+     showgrid="false"
+     units="px"
+     inkscape:window-width="1920"
+     inkscape:window-height="1057"
+     inkscape:window-x="-8"
+     inkscape:window-y="-8"
+     inkscape:window-maximized="1"
+     showguides="false"
+     inkscape:showpageshadow="2"
+     inkscape:pagecheckerboard="0"
+     inkscape:deskcolor="#d1d1d1" />
+  <metadata
+     id="metadata7">
+    <rdf:RDF>
+      <cc:Work
+         rdf:about="">
+        <dc:format>image/svg+xml</dc:format>
+        <dc:type
+           rdf:resource="http://purl.org/dc/dcmitype/StillImage" />
+      </cc:Work>
+    </rdf:RDF>
+  </metadata>
+  <g
+     inkscape:label="Layer 1"
+     inkscape:groupmode="layer"
+     id="layer1"
+     transform="translate(0,-1015.3622)">
+    <g
+       id="g1">
+      <text
+         id="text4153"
+         y="823.79077"
+         x="142.85715"
+         style="font-style:normal;font-weight:normal;line-height:0%;font-family:sans-serif;letter-spacing:0px;word-spacing:0px;fill:#ff8c00;fill-opacity:1;stroke:none;stroke-width:1px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1"
+         xml:space="preserve"><tspan
+           y="823.79077"
+           x="142.85715"
+           id="tspan4155"
+           sodipodi:role="line"
+           style="font-size:40px;line-height:1.25"> </tspan></text>
+      <circle
+         r="18.282497"
+         cy="1033.8622"
+         cx="18.5"
+         inkscape:export-ydpi="90.709999"
+         inkscape:export-xdpi="90.709999"
+         inkscape:export-filename="/home/gbraad/Projects/B2G-FxOS-hardware-system/style/icons/icon_512.png"
+         id="path2989-9"
+         style="fill:#b3b3b3;fill-opacity:1;stroke:#000000;stroke-width:0.36348766;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:1" />
+      <circle
+         transform="matrix(0.24232511,0,0,0.24232511,-4.6830709,826.69554)"
+         r="59.621181"
+         cy="854.91205"
+         cx="95.669289"
+         id="path3759-5"
+         style="fill:#000000;fill-opacity:1;stroke:#000000;stroke-width:1.40049756;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:1;filter:url(#filter3499)" />
+    </g>
+    <path
+       style="font-weight:bold;font-size:32px;line-height:1.25;font-family:'Courier New';-inkscape-font-specification:'Courier New Bold';fill:#ff8c00;stroke-width:0.999998"
+       d="m 20.64499,1033.8544 -8.87398,-5.75 q -0.668221,-0.4375 -0.895416,-0.7813 -0.213831,-0.3437 -0.213831,-0.875 0,-0.6719 0.414297,-1.1562 0.414297,-0.4844 0.975603,-0.4844 0.347476,0 1.069155,0.4531 l 13.217419,8.5938 -13.217419,8.5937 q -0.721679,0.4688 -1.069155,0.4688 -0.561306,0 -0.975603,-0.4844 -0.414297,-0.4844 -0.414297,-1.1719 0,-0.5312 0.213831,-0.875 0.227195,-0.3437 0.895416,-0.7812 z"
+       id="text1"
+       aria-label="&gt;" />
+  </g>
+</svg>

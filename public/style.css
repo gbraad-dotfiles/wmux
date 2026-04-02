@@ -1,0 +1,482 @@
+/* ============================================================
+   WMUX - WEB TMUX CONTROLLER STYLES
+   Based on device-controller styling
+   ============================================================ */
+
+/* Font Embedding - Sauce Code Pro Nerd Font */
+@font-face {
+    font-family: 'Sauce Code Pro Nerd Font';
+    src: url('SauceCodeProNF-Regular.ttf') format('truetype');
+    font-weight: normal;
+    font-style: normal;
+}
+
+@font-face {
+    font-family: 'Sauce Code Pro Nerd Font';
+    src: url('SauceCodeProNF-Bold.ttf') format('truetype');
+    font-weight: bold;
+    font-style: normal;
+}
+
+/* CSS Variables */
+:root {
+    --bg-primary: #0a0a0a;
+    --bg-secondary: #1a1a1a;
+    --bg-tertiary: #2a2a2a;
+    --accent: #CF1A37;
+    --accent-dim: #a01528;
+    --accent-blue: #0066FF;
+    --text-primary: #ffffff;
+    --text-secondary: #aaaaaa;
+    --border: #333333;
+    --shadow: rgba(207, 26, 55, 0.3);
+}
+
+/* Reset */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+/* Body */
+body {
+    font-family: 'Sauce Code Pro Nerd Font', 'Source Code Pro', 'Sauce Code Pro', 'Monaco', 'Menlo', 'Consolas', monospace;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    display: flex;
+    flex-direction: column;
+    height: var(--vh, 100vh); /* Use actual visible viewport height */
+    max-height: var(--vh, 100vh);
+    overflow: hidden;
+    position: fixed;
+    width: 100%;
+    top: 0;
+    left: 0;
+}
+
+html {
+    overflow: hidden;
+    height: 100%;
+    position: fixed;
+    width: 100%;
+}
+
+/* Top Banner */
+.top-banner {
+    background: var(--accent);
+    padding: 0 20px;
+    padding-left: max(20px, env(safe-area-inset-left));
+    padding-right: max(20px, env(safe-area-inset-right));
+    padding-top: env(safe-area-inset-top);
+    height: calc(48px + env(safe-area-inset-top));
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+    position: relative;
+    z-index: 100;
+    flex-shrink: 0;
+    will-change: auto;
+    contain: layout style;
+    transform: translateZ(0);
+}
+
+.banner-title {
+    font-size: 1.1em;
+    font-weight: bold;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    color: var(--text-primary);
+    line-height: 1;
+    flex: 1;
+}
+
+.connection-indicator {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.75em;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    contain: layout style paint;
+    will-change: auto;
+}
+
+.indicator-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #666;
+}
+
+.connection-indicator.connected .indicator-dot {
+    background: #00FF00;
+}
+
+.indicator-text {
+    color: #aaa;
+    white-space: nowrap;
+}
+
+.connection-indicator.connected .indicator-text {
+    color: #00FF00;
+}
+
+@media (max-width: 600px) {
+    .connection-indicator {
+        display: none;
+    }
+}
+
+/* Hamburger Button */
+.hamburger-button {
+    background: none;
+    border: none;
+    color: white !important;
+    font-size: 1.8em;
+    cursor: pointer;
+    padding: 5px 10px;
+    transition: opacity 0.2s;
+    line-height: 1;
+    width: auto !important;
+}
+
+.hamburger-button:hover {
+    opacity: 0.8;
+}
+
+.hamburger-button:active,
+.hamburger-button:focus {
+    background: none !important;
+    outline: none;
+}
+
+/* Controls Button */
+.controls-button {
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    color: white !important;
+    font-size: 0.85em;
+    cursor: pointer;
+    padding: 8px 16px;
+    border-radius: 4px;
+    transition: all 0.2s;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    font-weight: bold;
+}
+
+.controls-button:hover {
+    background: rgba(255, 255, 255, 0.2);
+    border-color: rgba(255, 255, 255, 0.3);
+}
+
+.controls-button:active {
+    background: rgba(255, 255, 255, 0.3);
+}
+
+/* Responsive button text */
+.btn-short {
+    display: none;
+}
+
+@media (max-width: 600px) {
+    .btn-full {
+        display: none;
+    }
+    .btn-short {
+        display: inline;
+    }
+}
+
+/* Navigation Menu */
+.menu-overlay {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 999;
+}
+
+.menu-overlay.active {
+    display: block;
+}
+
+.menu-panel {
+    position: fixed;
+    top: 0;
+    left: -400px;
+    width: 400px;
+    max-width: 90vw;
+    height: var(--vh, 100vh);
+    max-height: var(--vh, 100vh);
+    background: var(--bg-secondary);
+    z-index: 1000;
+    transition: left 0.3s ease;
+    padding: 20px;
+    padding-bottom: 60px;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    box-shadow: 2px 0 10px rgba(0, 0, 0, 0.5);
+}
+
+.menu-panel.active {
+    left: 0;
+}
+
+.menu-close {
+    position: absolute;
+    top: 10px;
+    right: 15px;
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    font-size: 2em;
+    cursor: pointer;
+    line-height: 1;
+    transition: all 0.2s;
+    padding: 5px 10px;
+    border-radius: 4px;
+}
+
+.menu-close:hover {
+    color: var(--text-primary);
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.menu-items {
+    margin-top: 60px;
+}
+
+.menu-section-title {
+    color: var(--accent-blue);
+    text-transform: uppercase;
+    font-size: 14px;
+    font-weight: bold;
+    letter-spacing: 1px;
+    margin-bottom: 15px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--border);
+}
+
+.menu-section {
+    margin-bottom: 20px;
+}
+
+/* Buttons */
+.menu-btn, .control-btn {
+    width: 100%;
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+    border: 1px solid var(--border);
+    padding: 10px 15px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 0.85em;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    transition: all 0.2s;
+    margin-bottom: 8px;
+}
+
+.menu-btn:hover, .control-btn:hover {
+    border-color: #4a4a4a;
+    background: #3a3a3a;
+}
+
+.menu-btn:active, .control-btn:active {
+    background: var(--accent-blue);
+    color: var(--text-primary);
+}
+
+select {
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+    border: 1px solid var(--border);
+    padding: 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 0.85em;
+}
+
+select:hover {
+    border-color: #4a4a4a;
+}
+
+/* Terminal Container */
+#terminal-container {
+    flex: 1;
+    padding: 0;
+    padding-bottom: env(safe-area-inset-bottom);
+    overflow: hidden;
+    background: var(--bg-primary);
+    min-height: 0; /* Ensure flex shrinking works */
+}
+
+#terminal {
+    width: 100%;
+    height: 100%;
+    padding: 0;
+}
+
+/* Hide xterm scrollbar */
+.xterm .xterm-viewport {
+    overflow-y: hidden !important;
+}
+
+/* xterm.js overrides */
+.xterm {
+    font-family: 'Source Code Pro', 'Sauce Code Pro', 'Monaco', 'Menlo', 'Consolas', monospace !important;
+    font-feature-settings: "liga" 0;
+    position: relative;
+    user-select: none;
+    -ms-user-select: none;
+    -webkit-user-select: none;
+}
+
+.xterm.focus,
+.xterm:focus {
+    outline: none;
+}
+
+/* Controls Dialog */
+.dialog-overlay {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.7);
+    z-index: 1500;
+    backdrop-filter: blur(4px);
+}
+
+.dialog-overlay.active {
+    display: block;
+}
+
+.dialog {
+    display: none;
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 90%;
+    max-width: 500px;
+    max-height: 80vh;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    z-index: 1501;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.8);
+    overflow: hidden;
+}
+
+.dialog.active {
+    display: flex;
+    flex-direction: column;
+}
+
+.dialog-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 15px 20px;
+    background: var(--bg-tertiary);
+    border-bottom: 1px solid var(--border);
+}
+
+.dialog-title {
+    font-size: 1.1em;
+    font-weight: bold;
+    color: var(--accent-blue);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.dialog-close {
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    font-size: 2em;
+    cursor: pointer;
+    line-height: 1;
+    padding: 0;
+    width: 32px;
+    height: 32px;
+    border-radius: 4px;
+    transition: all 0.2s;
+}
+
+.dialog-close:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--text-primary);
+}
+
+.dialog-content {
+    padding: 20px;
+    overflow-y: auto;
+}
+
+.control-section {
+    margin-bottom: 20px;
+}
+
+.control-section:last-child {
+    margin-bottom: 0;
+}
+
+.control-section-label {
+    font-size: 12px;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 10px;
+    font-weight: bold;
+}
+
+.control-buttons {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 10px;
+}
+
+/* Mobile keyboard toggle */
+#keyboard-toggle {
+    transition: all 0.3s ease;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+}
+
+#keyboard-toggle:active {
+    transform: scale(0.95);
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .top-banner {
+        height: calc(44px + env(safe-area-inset-top));
+        padding: 0 15px;
+        padding-top: env(safe-area-inset-top);
+    }
+
+    .banner-title {
+        font-size: 1em;
+    }
+
+    #terminal-container {
+        padding: 0;
+    }
+
+    #keyboard-toggle {
+        bottom: calc(20px + env(safe-area-inset-bottom));
+        right: 20px;
+    }
+}

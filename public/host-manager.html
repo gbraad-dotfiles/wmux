@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>wmux - Host Manager</title>
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#CF1A37">
+    <link rel="stylesheet" href="style.css" />
+    <style>
+        .host-list {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .host-item {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 15px;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .host-item.auto-connect {
+            border-color: var(--accent);
+        }
+
+        .host-info {
+            flex: 1;
+        }
+
+        .host-name {
+            font-weight: bold;
+            font-size: 1.1em;
+            margin-bottom: 5px;
+        }
+
+        .host-url {
+            font-size: 0.9em;
+            color: var(--text-secondary);
+            font-family: monospace;
+        }
+
+        .host-actions {
+            display: flex;
+            gap: 10px;
+        }
+
+        .host-btn {
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+            border: 1px solid var(--border);
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.85em;
+            text-transform: uppercase;
+            transition: all 0.2s;
+        }
+
+        .host-btn:hover {
+            background: #3a3a3a;
+        }
+
+        .host-btn.primary {
+            background: var(--accent);
+            border-color: var(--accent);
+        }
+
+        .host-btn.primary:hover {
+            background: var(--accent-dim);
+        }
+
+        .add-host-section {
+            max-width: 800px;
+            margin: 20px auto;
+            padding: 20px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-size: 0.9em;
+            color: var(--text-secondary);
+        }
+
+        .form-group input {
+            width: 100%;
+            padding: 10px;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            color: var(--text-primary);
+            font-family: inherit;
+        }
+
+        .form-group input[type="checkbox"] {
+            width: auto;
+            margin-right: 10px;
+        }
+
+        .section-title {
+            font-size: 1.2em;
+            font-weight: bold;
+            color: var(--accent-blue);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .discovered-hosts {
+            max-width: 800px;
+            margin: 20px auto;
+            padding: 20px;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 40px;
+            color: var(--text-secondary);
+        }
+
+        .add-host-fab {
+            background: var(--accent);
+            color: white;
+            border: none;
+            border-radius: 4px;
+            width: 48px;
+            height: 48px;
+            font-size: 32px;
+            line-height: 1;
+            cursor: pointer;
+            box-shadow: 0 2px 8px rgba(207, 26, 55, 0.3);
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0;
+        }
+
+        .add-host-fab:hover {
+            background: var(--accent-dim);
+        }
+
+        .add-host-fab:active {
+            background: #8a1420;
+        }
+    </style>
+</head>
+<body>
+    <div class="top-banner">
+        <div class="banner-title">wmux - Host Manager</div>
+    </div>
+
+    <div class="host-list" id="host-list">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 15px;">
+            <div class="section-title" style="margin-bottom: 0;">Your Hosts</div>
+            <button class="add-host-fab" id="show-add-host">+</button>
+        </div>
+        <div id="manual-hosts"></div>
+    </div>
+
+    <div class="discovered-hosts" id="discovered-hosts" style="display: none;">
+        <div class="section-title">Discovered Hosts</div>
+        <div id="discovered-list"></div>
+    </div>
+
+    <!-- Add Host Dialog -->
+    <div class="dialog-overlay" id="add-host-overlay"></div>
+    <div class="dialog" id="add-host-dialog">
+        <div class="dialog-header">
+            <div class="dialog-title">Add New Host</div>
+            <button class="dialog-close" id="close-add-host">×</button>
+        </div>
+        <div class="dialog-content">
+            <div class="form-group">
+                <label>Host Name</label>
+                <input type="text" id="host-name" placeholder="My Server">
+            </div>
+            <div class="form-group">
+                <label>Host URL</label>
+                <input type="text" id="host-url" placeholder="http://100.x.x.x:2022">
+            </div>
+            <div class="form-group">
+                <label>Auto-connect Session (optional)</label>
+                <input type="text" id="auto-session" placeholder="Leave empty to choose manually">
+                <div style="font-size: 0.8em; color: var(--text-secondary); margin-top: 5px;">
+                    If specified, will automatically attach to this session when connecting to the host
+                </div>
+            </div>
+            <div class="form-group">
+                <label>
+                    <input type="checkbox" id="auto-connect">
+                    Auto-connect to this host on startup
+                </label>
+            </div>
+            <button class="host-btn primary" id="add-host-btn" style="width: 100%; margin-top: 10px;">Add Host</button>
+        </div>
+    </div>
+
+    <script src="host-manager.js"></script>
+</body>
+</html>

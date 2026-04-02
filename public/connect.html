@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>wmux - Web tmux Controller</title>
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#CF1A37">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css" />
+    <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+    <div class="top-banner">
+        <button class="hamburger-button" id="menu-btn">☰</button>
+        <div class="banner-title">wmux</div>
+        <button class="controls-button" id="sessions-btn"><span class="btn-full">Sessions</span><span class="btn-short">S</span></button>
+        <button class="controls-button" id="windows-btn" style="display: none;"><span class="btn-full">Windows</span><span class="btn-short">W</span></button>
+        <button class="controls-button" id="controls-btn" style="display: none;"><span class="btn-full">Panes</span><span class="btn-short">P</span></button>
+        <div class="connection-indicator" id="status">
+            <span class="indicator-dot"></span>
+            <span class="indicator-text">Disconnected</span>
+        </div>
+    </div>
+
+    <!-- Navigation Menu -->
+    <div class="menu-overlay" id="nav-overlay"></div>
+    <div class="menu-panel" id="nav-menu">
+        <button class="menu-close" id="close-menu">×</button>
+        <div class="menu-items">
+            <div class="menu-section-title">Settings</div>
+
+            <div class="menu-section">
+                <label style="font-size: 11px; color: var(--text-secondary); display: block; margin-bottom: 15px;">
+                    Font Size: <span id="font-size-value">13</span>px
+                    <input type="range" id="font-size" min="10" max="24" value="13" style="width: 100%; margin-top: 8px;">
+                </label>
+
+                <button id="reconnect-btn" class="menu-btn">Reconnect to Host</button>
+                <button id="disconnect-btn" class="menu-btn" style="background: var(--accent); border-color: var(--accent);">Disconnect Host</button>
+            </div>
+
+            <div class="menu-section-title" id="debug-toggle" style="cursor: pointer; user-select: none;">Debug Info ▼</div>
+
+            <div class="menu-section" id="debug-section" style="display: none;">
+                <div id="debug-info" style="font-family: monospace; font-size: 10px; color: #00FF00; background: #000; padding: 10px; border-radius: 4px; white-space: pre-wrap;">
+Loading...
+                </div>
+            </div>
+
+            <div class="menu-section-title">Info</div>
+
+            <div class="menu-section">
+                <div style="font-size: 10px; color: #888;">
+                    Mouse support enabled<br>
+                    Default prefix: Ctrl+b<br>
+                    <br>
+                    <strong style="color: #aaa;">Mobile:</strong><br>
+                    Tap KB button to toggle keyboard
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Windows Dialog -->
+    <div class="dialog-overlay" id="windows-overlay"></div>
+    <div class="dialog" id="windows-dialog">
+        <div class="dialog-header">
+            <div class="dialog-title">Windows</div>
+            <button class="dialog-close" id="close-windows">×</button>
+        </div>
+        <div class="dialog-content">
+            <div class="control-section">
+                <div class="control-section-label">Window Management</div>
+                <div class="control-buttons">
+                    <button id="new-window" class="control-btn">New</button>
+                    <button id="next-window" class="control-btn">Next</button>
+                    <button id="prev-window" class="control-btn">Previous</button>
+                </div>
+            </div>
+
+            <div class="control-section">
+                <div class="control-section-label">Switch to Window</div>
+                <div id="windows-list" style="max-height: 300px; overflow-y: auto;">
+                    <div style="text-align: center; color: var(--text-secondary); padding: 20px;">
+                        No windows available
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Panes Dialog -->
+    <div class="dialog-overlay" id="controls-overlay"></div>
+    <div class="dialog" id="controls-dialog">
+        <div class="dialog-header">
+            <div class="dialog-title">Panes</div>
+            <button class="dialog-close" id="close-controls">×</button>
+        </div>
+        <div class="dialog-content">
+            <div class="control-section">
+                <div class="control-section-label">Split</div>
+                <div class="control-buttons">
+                    <button id="split-h" class="control-btn">Horizontal (│)</button>
+                    <button id="split-v" class="control-btn">Vertical (─)</button>
+                </div>
+            </div>
+
+            <div class="control-section">
+                <div class="control-section-label">Actions</div>
+                <div class="control-buttons">
+                    <button id="close-pane" class="control-btn">Close</button>
+                    <button id="zoom-pane" class="control-btn">Zoom Toggle</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Confirm Kill Dialog -->
+    <div class="dialog-overlay" id="confirm-kill-overlay"></div>
+    <div class="dialog" id="confirm-kill-dialog" style="max-width: 400px;">
+        <div class="dialog-header">
+            <div class="dialog-title">Confirm Kill Session</div>
+            <button class="dialog-close" id="close-confirm-kill">×</button>
+        </div>
+        <div class="dialog-content">
+            <p id="confirm-kill-message" style="margin-bottom: 20px; color: var(--text-primary);"></p>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                <button id="confirm-kill-cancel" class="control-btn">Cancel</button>
+                <button id="confirm-kill-yes" class="control-btn" style="background: var(--accent); border-color: var(--accent);">Kill Session</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Sessions Dialog -->
+    <div class="dialog-overlay" id="sessions-overlay"></div>
+    <div class="dialog" id="sessions-dialog">
+        <div class="dialog-header">
+            <div class="dialog-title">Sessions</div>
+            <button class="dialog-close" id="close-sessions">×</button>
+        </div>
+        <div class="dialog-content">
+            <div class="control-section">
+                <div class="control-section-label">Existing Sessions</div>
+                <select id="session-select" style="width: 100%; margin-bottom: 10px; padding: 8px; background: var(--bg-tertiary); border: 1px solid var(--border); color: var(--text-primary); border-radius: 4px; font-family: inherit; font-size: 0.85em;">
+                    <option value="">Loading...</option>
+                </select>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                    <button id="attach-btn" class="control-btn">Attach</button>
+                    <button id="kill-session-btn" class="control-btn" style="background: var(--accent); border-color: var(--accent);">Kill</button>
+                </div>
+            </div>
+
+            <div class="control-section">
+                <div class="control-section-label">Create New Session</div>
+                <input type="text" id="new-session-name" placeholder="wmux_new" style="width: 100%; margin-bottom: 10px; padding: 8px; background: var(--bg-tertiary); border: 1px solid var(--border); color: var(--text-primary); border-radius: 4px; font-family: inherit; font-size: 0.85em;">
+                <button id="create-btn" class="control-btn">Create New Session</button>
+            </div>
+
+            <div class="control-section">
+                <div class="control-section-label">Actions</div>
+                <button id="detach-session-btn" class="control-btn">Detach from Session</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Mobile keyboard toggle button -->
+    <button id="keyboard-toggle" style="display: none; position: fixed; bottom: calc(20px + env(safe-area-inset-bottom, 0px)); right: 20px; z-index: 1000; background: var(--accent); color: white; border: none; border-radius: 50%; width: 56px; height: 56px; font-size: 18px; box-shadow: 0 4px 12px rgba(0,0,0,0.5); cursor: pointer; font-weight: bold; touch-action: manipulation;">KB</button>
+
+    <!-- Paste button for mobile -->
+    <button id="paste-toggle" style="display: none; position: fixed; bottom: calc(90px + env(safe-area-inset-bottom, 0px)); right: 20px; z-index: 1000; background: rgba(255,255,255,0.2); color: white; border: 1px solid rgba(255,255,255,0.3); border-radius: 50%; width: 56px; height: 56px; font-size: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.5); cursor: pointer; font-weight: bold; touch-action: manipulation;">📋</button>
+
+    <div id="terminal-container">
+        <div id="terminal"></div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xterm-addon-web-links@0.9.0/lib/xterm-addon-web-links.js"></script>
+    <script src="connect.js"></script>
+</body>
+</html>

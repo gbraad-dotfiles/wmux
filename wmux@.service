@@ -1,0 +1,31 @@
+[Unit]
+Description=wmux - Web-based tmux Controller for %i
+After=network-online.target tailscaled.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=%i
+Group=%i
+WorkingDirectory=/usr/local/bin
+ExecStart=/usr/local/bin/wmux
+Restart=on-failure
+RestartSec=5s
+
+# Security settings
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=false
+ReadWritePaths=/tmp
+
+# Environment
+Environment="TERM=xterm-256color"
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=wmux
+
+[Install]
+WantedBy=multi-user.target

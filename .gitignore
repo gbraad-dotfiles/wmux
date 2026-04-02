@@ -1,0 +1,38 @@
+# Binaries
+wmux
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binary
+*.test
+
+# Output of the go coverage tool
+*.out
+
+# Dependency directories
+vendor/
+
+# Go workspace file
+go.work
+
+# CMake build files
+CMakeCache.txt
+CMakeFiles/
+Makefile
+cmake_install.cmake
+
+# Capacitor
+wmux-capacitor/node_modules/
+wmux-capacitor/android/
+wmux-capacitor/www/
+*.apk
+*.aab
+
+# RPM build
+*.tar.gz
+*.rpm
+*.src.rpm
+rpmbuild/
