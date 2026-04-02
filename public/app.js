@@ -92,6 +92,66 @@ function setupEventListeners() {
 
     // Desktop keyboard shortcuts
     document.addEventListener('keydown', async (e) => {
+        // Check if apps dialog is handling this event
+        if (handleAppsKeydown(e)) {
+            return;
+        }
+
+        // ESC closes any open dialog
+        if (e.key === 'Escape') {
+            const activeDialogs = [
+                { dialog: 'apps-dialog', overlay: 'apps-overlay' },
+                { dialog: 'sessions-dialog', overlay: 'sessions-overlay' },
+                { dialog: 'windows-dialog', overlay: 'windows-overlay' },
+                { dialog: 'controls-dialog', overlay: 'controls-overlay' },
+                { dialog: 'confirm-kill-dialog', overlay: 'confirm-kill-overlay' },
+                { dialog: 'add-host-dialog', overlay: 'add-host-overlay' }
+            ];
+
+            let closedAny = false;
+            activeDialogs.forEach(({ dialog, overlay }) => {
+                const dialogEl = document.getElementById(dialog);
+                const overlayEl = document.getElementById(overlay);
+                if (dialogEl && dialogEl.classList.contains('active')) {
+                    dialogEl.classList.remove('active');
+                    if (overlayEl) overlayEl.classList.remove('active');
+                    closedAny = true;
+                }
+            });
+
+            // Close menu if open
+            const navMenu = document.getElementById('nav-menu');
+            const navOverlay = document.getElementById('nav-overlay');
+            if (navMenu && navMenu.classList.contains('active')) {
+                navMenu.classList.remove('active');
+                if (navOverlay) navOverlay.classList.remove('active');
+                closedAny = true;
+            }
+
+            if (closedAny) {
+                e.preventDefault();
+                return;
+            }
+        }
+
+        // Ctrl+A to open Apps dialog
+        if (e.ctrlKey && e.key === 'a' && !e.shiftKey && !e.metaKey) {
+            // Don't intercept if user is typing in an input field
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
+                return;
+            }
+            e.preventDefault();
+            const appsDialog = document.getElementById('apps-dialog');
+            const appsOverlay = document.getElementById('apps-overlay');
+            if (appsDialog && appsOverlay) {
+                loadApps();
+                appSearchQuery = '';
+                selectedAppIndex = 0;
+                appsDialog.classList.add('active');
+                appsOverlay.classList.add('active');
+                performAppSearch('');
+            }
+        }
         // Ctrl+Shift+V or Cmd+Shift+V for paste
         if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'V') {
             e.preventDefault();
@@ -773,6 +833,9 @@ sessionsOverlay.addEventListener('click', () => {
 
 // Applications dialog
 let appsCache = [];
+let filteredApps = [];
+let selectedAppIndex = 0;
+let appSearchQuery = '';
 let defaultSession = 'screen';
 
 // Fetch config
@@ -790,7 +853,6 @@ const closeApps = document.getElementById('close-apps');
 const appsDialog = document.getElementById('apps-dialog');
 const appsOverlay = document.getElementById('apps-overlay');
 const appsList = document.getElementById('apps-list');
-const appSearch = document.getElementById('app-search');
 
 async function loadApps() {
     try {
@@ -804,30 +866,73 @@ async function loadApps() {
     }
 }
 
+function highlightMatches(text, query) {
+    if (!query) return text;
+
+    let result = '';
+    let textLower = text.toLowerCase();
+    let queryLower = query.toLowerCase();
+    let queryIdx = 0;
+
+    for (let i = 0; i < text.length && queryIdx < queryLower.length; i++) {
+        if (textLower[i] === queryLower[queryIdx]) {
+            result += `<span style="color: var(--accent); font-weight: bold;">${text[i]}</span>`;
+            queryIdx++;
+        } else {
+            result += text[i];
+        }
+    }
+
+    // Add remaining characters
+    result += text.slice(result.replace(/<[^>]*>/g, '').length);
+    return result;
+}
+
 function renderApps(apps) {
+    filteredApps = apps;
+
     if (apps.length === 0) {
         appsList.innerHTML = '<div style="padding: 20px; text-align: center; color: var(--text-secondary);">No apps found</div>';
         return;
     }
 
-    appsList.innerHTML = apps.map(app => `
-        <div class="app-item" data-app="${app.name}">
-            <div style="flex: 1;">
-                <div style="font-weight: 500; color: var(--text-primary);">${app.title || app.name}</div>
-                <div style="font-size: 0.75em; color: var(--text-secondary); margin-top: 2px;">${app.name}</div>
-            </div>
-            <button class="app-launch-btn" data-app="${app.name}" style="background: var(--accent); color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 0.85em;">Launch</button>
-        </div>
-    `).join('');
+    // Ensure selected index is within bounds
+    if (selectedAppIndex >= apps.length) {
+        selectedAppIndex = apps.length - 1;
+    }
+    if (selectedAppIndex < 0) {
+        selectedAppIndex = 0;
+    }
 
-    // Add launch handlers
-    appsList.querySelectorAll('.app-launch-btn').forEach(btn => {
-        btn.addEventListener('click', async (e) => {
-            e.stopPropagation();
-            const appName = btn.dataset.app;
+    appsList.innerHTML = apps.map((app, idx) => {
+        const isSelected = idx === selectedAppIndex;
+        const title = app.title || app.name;
+        const highlightedTitle = highlightMatches(title, appSearchQuery);
+        const highlightedName = highlightMatches(app.name, appSearchQuery);
+
+        return `
+            <div class="app-item" data-app="${app.name}" data-index="${idx}" style="cursor: pointer; ${isSelected ? 'background: var(--accent); border-color: var(--accent);' : ''}">
+                <div style="flex: 1;">
+                    <div style="font-weight: 500; color: var(--text-primary);">${highlightedTitle}</div>
+                    <div style="font-size: 0.75em; color: var(--text-secondary); margin-top: 2px;">${highlightedName}</div>
+                </div>
+            </div>
+        `;
+    }).join('');
+
+    // Add click handlers
+    appsList.querySelectorAll('.app-item').forEach(item => {
+        item.addEventListener('click', async (e) => {
+            const appName = item.dataset.app;
             await launchApp(appName);
         });
     });
+
+    // Scroll selected item into view
+    const selectedItem = appsList.querySelector(`[data-index="${selectedAppIndex}"]`);
+    if (selectedItem) {
+        selectedItem.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }
 }
 
 async function launchApp(appName) {
@@ -843,6 +948,8 @@ async function launchApp(appName) {
             // Close apps dialog
             appsDialog.classList.remove('active');
             appsOverlay.classList.remove('active');
+            appSearchQuery = '';
+            selectedAppIndex = 0;
 
             // Refresh windows list
             send({ type: 'list_windows' });
@@ -854,19 +961,72 @@ async function launchApp(appName) {
     }
 }
 
+// Apps dialog keyboard navigation
+function handleAppsKeydown(e) {
+    const appsDialog = document.getElementById('apps-dialog');
+    if (!appsDialog || !appsDialog.classList.contains('active')) {
+        return false;
+    }
+
+    // Handle navigation keys
+    if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        selectedAppIndex = Math.min(selectedAppIndex + 1, filteredApps.length - 1);
+        renderApps(filteredApps);
+        return true;
+    }
+
+    if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        selectedAppIndex = Math.max(selectedAppIndex - 1, 0);
+        renderApps(filteredApps);
+        return true;
+    }
+
+    if (e.key === 'Enter') {
+        e.preventDefault();
+        if (filteredApps.length > 0 && selectedAppIndex >= 0 && selectedAppIndex < filteredApps.length) {
+            const selectedApp = filteredApps[selectedAppIndex];
+            launchApp(selectedApp.name);
+        }
+        return true;
+    }
+
+    if (e.key === 'Escape') {
+        e.preventDefault();
+        appsDialog.classList.remove('active');
+        document.getElementById('apps-overlay').classList.remove('active');
+        appSearchQuery = '';
+        selectedAppIndex = 0;
+        return true;
+    }
+
+    if (e.key === 'Backspace') {
+        e.preventDefault();
+        appSearchQuery = appSearchQuery.slice(0, -1);
+        performAppSearch(appSearchQuery);
+        return true;
+    }
+
+    // Handle typing (single printable characters)
+    if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        e.preventDefault();
+        appSearchQuery += e.key;
+        performAppSearch(appSearchQuery);
+        return true;
+    }
+
+    return false;
+}
+
 if (appsBtn) {
     appsBtn.addEventListener('click', () => {
         loadApps();
+        appSearchQuery = '';
+        selectedAppIndex = 0;
         appsDialog.classList.add('active');
         appsOverlay.classList.add('active');
-
-        // Clear search and auto-focus
-        setTimeout(() => {
-            if (appSearch) {
-                appSearch.value = '';
-                appSearch.focus();
-            }
-        }, 100);
+        performAppSearch('');
     });
 }
 
@@ -874,6 +1034,8 @@ if (closeApps) {
     closeApps.addEventListener('click', () => {
         appsDialog.classList.remove('active');
         appsOverlay.classList.remove('active');
+        appSearchQuery = '';
+        selectedAppIndex = 0;
     });
 }
 
@@ -881,6 +1043,8 @@ if (appsOverlay) {
     appsOverlay.addEventListener('click', () => {
         appsDialog.classList.remove('active');
         appsOverlay.classList.remove('active');
+        appSearchQuery = '';
+        selectedAppIndex = 0;
     });
 }
 
@@ -924,32 +1088,36 @@ function fuzzyMatch(query, text) {
     return { match: false, score: -1 };
 }
 
-if (appSearch) {
-    appSearch.addEventListener('input', (e) => {
-        const query = e.target.value;
+function performAppSearch(query) {
+    appSearchQuery = query;
+    const queryDisplay = document.getElementById('app-search-query');
+    if (queryDisplay) {
+        queryDisplay.textContent = query ? `"${query}"` : '';
+    }
 
-        if (!query) {
-            renderApps(appsCache);
-            return;
-        }
+    if (!query) {
+        selectedAppIndex = 0;
+        renderApps(appsCache);
+        return;
+    }
 
-        // Fuzzy search with scoring
-        const results = appsCache.map(app => {
-            const nameMatch = fuzzyMatch(query, app.name);
-            const titleMatch = fuzzyMatch(query, app.title || '');
-            const bestScore = Math.max(nameMatch.score, titleMatch.score);
+    // Fuzzy search with scoring
+    const results = appsCache.map(app => {
+        const nameMatch = fuzzyMatch(query, app.name);
+        const titleMatch = fuzzyMatch(query, app.title || '');
+        const bestScore = Math.max(nameMatch.score, titleMatch.score);
 
-            return {
-                app,
-                match: nameMatch.match || titleMatch.match,
-                score: bestScore
-            };
-        }).filter(r => r.match)
-          .sort((a, b) => b.score - a.score)
-          .map(r => r.app);
+        return {
+            app,
+            match: nameMatch.match || titleMatch.match,
+            score: bestScore
+        };
+    }).filter(r => r.match)
+      .sort((a, b) => b.score - a.score)
+      .map(r => r.app);
 
-        renderApps(results);
-    });
+    selectedAppIndex = 0;
+    renderApps(results);
 }
 
 // Font size control
