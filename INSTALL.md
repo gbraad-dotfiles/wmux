@@ -102,14 +102,13 @@ sudo journalctl -u wmux-multi@$USER -f
 
 Open your browser to:
 - **HTTPS**: `https://100.65.21.80:2022` (recommended - clipboard works)
-- **HTTP**: `http://100.65.21.80:2080` (auto-redirects to HTTPS)
+- **HTTP**: `http://100.65.21.80:2022` (auto-redirects to HTTPS on same port)
 
 For HTTPS, accept the self-signed certificate warning (click "Advanced" → "Proceed").
 
 ## Port Configuration
 
-- **wmux HTTPS**: Port 2022
-- **wmux HTTP redirect**: Port 2080 (when TLS enabled)
+- **wmux**: Port 2022 (handles both HTTP redirect and HTTPS)
 - **amux**: Port 2023 (HTTP, localhost only)
 
 ## Troubleshooting

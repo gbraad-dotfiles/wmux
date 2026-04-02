@@ -1,12 +1,14 @@
 package main
 
 import (
+	"crypto/tls"
 	"encoding/base64"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
@@ -451,6 +453,72 @@ func makeDiscoverHostsHandler(port int) http.HandlerFunc {
 	}
 }
 
+// handleMuxConnection handles both HTTP (redirect) and HTTPS on same port
+func handleMuxConnection(rawConn net.Conn, tlsConfig *tls.Config, port int) {
+	defer rawConn.Close()
+
+	// Just do TLS - no HTTP detection for now
+	tlsConn := tls.Server(rawConn, tlsConfig)
+
+	// Handshake
+	if err := tlsConn.Handshake(); err != nil {
+		log.Printf("TLS handshake error: %v", err)
+		return
+	}
+
+	// Serve
+	server := &http.Server{Handler: http.DefaultServeMux}
+	server.Serve(&singleUseListener{conn: tlsConn})
+}
+
+// firstByteConn prepends the first byte back to reads
+type firstByteConn struct {
+	net.Conn
+	firstByte []byte
+	used      bool
+}
+
+func (c *firstByteConn) Read(b []byte) (int, error) {
+	if !c.used && len(c.firstByte) > 0 {
+		c.used = true
+		n := copy(b, c.firstByte)
+		if n < len(b) {
+			m, err := c.Conn.Read(b[n:])
+			return n + m, err
+		}
+		return n, nil
+	}
+	return c.Conn.Read(b)
+}
+
+// singleUseConn wrapper
+type singleUseConn struct {
+	net.Conn
+}
+
+// singleUseListener serves one connection
+type singleUseListener struct {
+	conn net.Conn
+}
+
+func (l *singleUseListener) Accept() (net.Conn, error) {
+	if l.conn != nil {
+		conn := l.conn
+		l.conn = nil
+		return conn, nil
+	}
+	return nil, io.EOF
+}
+
+func (l *singleUseListener) Close() error {
+	return nil
+}
+
+func (l *singleUseListener) Addr() net.Addr {
+	return &net.TCPAddr{}
+}
+
+// readerConn wraps a net.Conn with a bufio.Reader
 func main() {
 	// Command line flags
 	version := flag.Bool("version", false, "Show version information")
@@ -603,9 +671,11 @@ func main() {
 	http.HandleFunc("/api/apps", proxyHandler)
 	http.HandleFunc("/api/apps/", proxyHandler)
 
-	protocol := "http"
+	if *bindAll {
+		log.Printf("WARNING: Exposed to all interfaces!\n")
+	}
+
 	if *tlsEnable {
-		protocol = "https"
 		// Check if cert files exist
 		if _, err := os.Stat(*tlsCert); os.IsNotExist(err) {
 			log.Fatalf("TLS certificate file not found: %s\nGenerate with: ./gen-cert.sh", *tlsCert)
@@ -614,42 +684,12 @@ func main() {
 			log.Fatalf("TLS key file not found: %s\nGenerate with: ./gen-cert.sh", *tlsKey)
 		}
 
-		// Start HTTP redirect server on port 2080
-		httpPort := 2080
-		var httpBindAddr string
-		if *bindAll {
-			httpBindAddr = fmt.Sprintf("0.0.0.0:%d", httpPort)
-		} else {
-			tailscaleIP, _ := getTailscaleIP()
-			httpBindAddr = fmt.Sprintf("%s:%d", tailscaleIP, httpPort)
-		}
+		log.Printf("Server running on https://%s (Tailscale)\n", bindAddr)
 
-		// HTTP redirect handler
-		go func() {
-			redirectMux := http.NewServeMux()
-			redirectMux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-				// Redirect to HTTPS on main port
-				host := strings.Split(r.Host, ":")[0]
-				httpsURL := fmt.Sprintf("https://%s:%d%s", host, *port, r.RequestURI)
-				http.Redirect(w, r, httpsURL, http.StatusMovedPermanently)
-			})
-			log.Printf("HTTP redirect server running on http://%s\n", httpBindAddr)
-			if err := http.ListenAndServe(httpBindAddr, redirectMux); err != nil {
-				log.Printf("HTTP redirect server failed: %v", err)
-			}
-		}()
-	}
-
-	if *bindAll {
-		log.Printf("Server running on %s://%s\n", protocol, bindAddr)
-		log.Printf("WARNING: Exposed to all interfaces!\n")
+		// Use standard HTTPS server
+		log.Fatal(http.ListenAndServeTLS(bindAddr, *tlsCert, *tlsKey, http.DefaultServeMux))
 	} else {
-		log.Printf("Server running on %s://%s (Tailscale)\n", protocol, bindAddr)
-	}
-
-	if *tlsEnable {
-		log.Fatal(http.ListenAndServeTLS(bindAddr, *tlsCert, *tlsKey, nil))
-	} else {
+		log.Printf("Server running on http://%s (Tailscale)\n", bindAddr)
 		log.Fatal(http.ListenAndServe(bindAddr, nil))
 	}
 }
