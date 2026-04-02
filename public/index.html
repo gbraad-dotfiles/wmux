@@ -18,6 +18,7 @@
             flex: 1;
             flex-direction: column;
             min-height: 0;
+            position: relative;
         }
 
         #view-host-selector {
@@ -124,6 +125,11 @@
         <div class="top-banner">
             <button class="hamburger-button" id="menu-btn">☰</button>
             <div class="banner-title">wmux</div>
+            <button class="controls-button" id="xpra-app-btn" style="display: none;">
+                <span id="xpra-app-name-click" style="cursor: pointer;">App</span>
+                <span style="margin: 0 6px;">│</span>
+                <span id="xpra-close-btn" style="cursor: pointer; font-size: 1.1em;">✕</span>
+            </button>
             <button class="controls-button" id="apps-btn"><span class="btn-full">Apps</span><span class="btn-short">A</span></button>
             <button class="controls-button" id="controls-btn" style="display: none;"><span class="btn-full">Panes</span><span class="btn-short">P</span></button>
             <button class="controls-button" id="windows-btn" style="display: none;"><span class="btn-full">Windows</span><span class="btn-short">W</span></button>
@@ -299,6 +305,15 @@
 
         <div id="terminal-container">
             <div id="terminal"></div>
+        </div>
+
+        <!-- Xpra overlay for GUI apps -->
+        <div id="xpra-overlay" style="display: none; position: absolute; top: calc(48px + env(safe-area-inset-top)); left: 0; right: 0; bottom: env(safe-area-inset-bottom); background: var(--bg-primary); z-index: 500;">
+            <div id="xpra-loading" style="display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; flex-direction: column; color: var(--text-secondary);">
+                <div style="font-size: 2em; margin-bottom: 20px;">⏳</div>
+                <div style="font-size: 1.2em;">Loading application...</div>
+            </div>
+            <iframe id="xpra-frame" style="display: none; width: 100%; height: 100%; border: none; background: #000;"></iframe>
         </div>
     </div>
 

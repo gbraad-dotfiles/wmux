@@ -31,6 +31,7 @@ type AppsConfig struct {
 	XpraEnabled      bool
 	XpraStartDisplay int
 	XpraStartPort    int
+	ServerHost       string // Hostname or IP for xpra URLs
 }
 
 type AppsManager struct {
@@ -359,21 +360,79 @@ func (am *AppsManager) handleRunApp(w http.ResponseWriter, r *http.Request) {
 		json.NewDecoder(r.Body).Decode(&req)
 	}
 
-	// Set defaults
-	if req.Action == "" {
-		req.Action = "run"
+	// Auto-detect GUI apps: if app has run-desktop action, use xpra mode
+	if req.Mode == "" || req.Mode == "terminal" {
+		if app.HasAction("run-desktop") {
+			req.Mode = "xpra"
+			log.Printf("Auto-detected desktop app %s (has run-desktop action), switching to xpra mode", name)
+		} else {
+			req.Mode = "terminal"
+		}
 	}
-	if req.Mode == "" {
-		req.Mode = "terminal"
+
+	if req.Action == "" {
+		// Convention: use run-desktop for GUI apps (xpra), run for terminal apps
+		if req.Mode == "xpra" {
+			req.Action = "run-desktop"
+		} else {
+			req.Action = "run"
+		}
 	}
 	if req.Target == "" {
 		req.Target = "screen" // Default to "screen" session
 	}
 
-	log.Printf("Running %s/%s in target=%s", name, req.Action, req.Target)
+	log.Printf("Running %s/%s in target=%s mode=%s", name, req.Action, req.Target, req.Mode)
 
 	// Execute the action
-	result, err := app.ExecuteAction(req.Action, req.Target)
+	if req.Mode == "xpra" {
+		// Look for run-xpra action, fallback to run-desktop
+		xpraAction := "run-xpra"
+		if !app.HasAction(xpraAction) {
+			xpraAction = req.Action // Use run-desktop
+		}
+
+		// Get the command from the action
+		action, exists := app.Actions[xpraAction]
+		if !exists {
+			http.Error(w, fmt.Sprintf("Action '%s' not found", xpraAction), http.StatusBadRequest)
+			return
+		}
+
+		// Expand variables in the command (e.g., $cmd -> /usr/bin/vivaldi)
+		command := action.Code
+		log.Printf("Before expansion: %q", command)
+		log.Printf("Available vars: %+v", app.Vars)
+
+		for varName, varValue := range app.Vars {
+			before := command
+			command = strings.ReplaceAll(command, "$"+varName, varValue)
+			if before != command {
+				log.Printf("Replaced $%s with %s", varName, varValue)
+			}
+		}
+
+		// Trim whitespace
+		command = strings.TrimSpace(command)
+
+		log.Printf("After expansion: %q", command)
+
+		// Start xpra session with the expanded command
+		session, err := am.StartXpraApp(name, command)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Failed to start xpra: %v", err), http.StatusInternalServerError)
+			return
+		}
+
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"status":  "success",
+			"mode":    "xpra",
+			"session": session.Info(),
+		})
+		return
+	}
+
+	result, err := app.ExecuteAction(req.Action, req.Target, req.Mode)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Execution failed: %v", err), http.StatusInternalServerError)
 		return
@@ -397,6 +456,177 @@ func (am *AppsManager) handleListXpraSessions(w http.ResponseWriter, r *http.Req
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"sessions": sessions,
 	})
+}
+
+func (am *AppsManager) handleStopXpra(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	var req struct {
+		AppName string `json:"appName"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request", http.StatusBadRequest)
+		return
+	}
+
+	// Find and stop the xpra session for this app
+	for display, session := range am.xpraSessions {
+		if session.AppName == req.AppName {
+			log.Printf("Stopping xpra session for %s on display :%d", req.AppName, display)
+
+			if err := session.Stop(); err != nil {
+				log.Printf("Failed to stop xpra session: %v", err)
+				http.Error(w, fmt.Sprintf("Failed to stop session: %v", err), http.StatusInternalServerError)
+				return
+			}
+
+			// Remove from tracking
+			delete(am.xpraSessions, display)
+
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"status": "success",
+				"message": fmt.Sprintf("Stopped xpra session for %s", req.AppName),
+			})
+			return
+		}
+	}
+
+	http.Error(w, "Session not found", http.StatusNotFound)
+}
+
+func (am *AppsManager) proxyWebSocket(w http.ResponseWriter, r *http.Request, port int, path string) {
+	// Upgrade connection to websocket
+	targetURL := fmt.Sprintf("ws://localhost:%d%s", port, path)
+
+	log.Printf("Proxying WebSocket: %s -> %s", r.URL.Path, targetURL)
+
+	// Connect to backend xpra websocket
+	backendConn, _, err := websocket.DefaultDialer.Dial(targetURL, nil)
+	if err != nil {
+		log.Printf("Failed to dial backend websocket: %v", err)
+		http.Error(w, "Failed to connect to xpra websocket", http.StatusBadGateway)
+		return
+	}
+	defer backendConn.Close()
+
+	// Upgrade client connection
+	clientConn, err := upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		log.Printf("Failed to upgrade client connection: %v", err)
+		return
+	}
+	defer clientConn.Close()
+
+	// Proxy messages bidirectionally
+	errChan := make(chan error, 2)
+
+	// Client -> Backend
+	go func() {
+		for {
+			msgType, msg, err := clientConn.ReadMessage()
+			if err != nil {
+				errChan <- err
+				return
+			}
+			if err := backendConn.WriteMessage(msgType, msg); err != nil {
+				errChan <- err
+				return
+			}
+		}
+	}()
+
+	// Backend -> Client
+	go func() {
+		for {
+			msgType, msg, err := backendConn.ReadMessage()
+			if err != nil {
+				errChan <- err
+				return
+			}
+			if err := clientConn.WriteMessage(msgType, msg); err != nil {
+				errChan <- err
+				return
+			}
+		}
+	}()
+
+	// Wait for error from either direction
+	<-errChan
+	log.Printf("WebSocket proxy closed")
+}
+
+func (am *AppsManager) handleXpraProxy(w http.ResponseWriter, r *http.Request) {
+	// Extract display from path: /xpra/:display/...
+	path := strings.TrimPrefix(r.URL.Path, "/xpra/")
+	parts := strings.SplitN(path, "/", 2)
+	if len(parts) == 0 {
+		http.Error(w, "Invalid xpra path", http.StatusBadRequest)
+		return
+	}
+
+	displayStr := parts[0]
+	var display int
+	fmt.Sscanf(displayStr, "%d", &display)
+
+	// Find the session for this display
+	session, exists := am.xpraSessions[display]
+	if !exists {
+		http.Error(w, "Xpra session not found", http.StatusNotFound)
+		return
+	}
+
+	// Build target URL
+	targetPath := "/"
+	if len(parts) > 1 {
+		targetPath = "/" + parts[1]
+	}
+	if r.URL.RawQuery != "" {
+		targetPath += "?" + r.URL.RawQuery
+	}
+	targetURL := fmt.Sprintf("http://localhost:%d%s", session.Port, targetPath)
+
+	// For WebSocket upgrade requests, proxy the websocket connection
+	if r.Header.Get("Upgrade") == "websocket" {
+		am.proxyWebSocket(w, r, session.Port, targetPath)
+		return
+	}
+
+	// Create proxy request
+	proxyReq, err := http.NewRequest(r.Method, targetURL, r.Body)
+	if err != nil {
+		http.Error(w, "Failed to create proxy request", http.StatusInternalServerError)
+		return
+	}
+
+	// Copy headers
+	for key, values := range r.Header {
+		for _, value := range values {
+			proxyReq.Header.Add(key, value)
+		}
+	}
+
+	// Execute request
+	client := &http.Client{}
+	resp, err := client.Do(proxyReq)
+	if err != nil {
+		http.Error(w, "Failed to reach xpra: "+err.Error(), http.StatusBadGateway)
+		return
+	}
+	defer resp.Body.Close()
+
+	// Copy response headers
+	for key, values := range resp.Header {
+		for _, value := range values {
+			w.Header().Add(key, value)
+		}
+	}
+
+	// Copy status code
+	w.WriteHeader(resp.StatusCode)
+
+	// Copy body
+	io.Copy(w, resp.Body)
 }
 
 func makeWebSocketHandler(defaultSession string) http.HandlerFunc {
@@ -785,6 +1015,9 @@ func main() {
 		})
 	})
 
+	// Extract server IP from bindAddr for xpra URLs
+	serverHost := strings.Split(bindAddr, ":")[0]
+
 	// Apps functionality (if enabled)
 	var appsManager *AppsManager
 	if !*noApps {
@@ -793,6 +1026,7 @@ func main() {
 			XpraEnabled:      true,
 			XpraStartDisplay: 10,
 			XpraStartPort:    10000,
+			ServerHost:       serverHost,
 		}
 
 		appsManager = newAppsManager(appsConfig)
@@ -835,6 +1069,19 @@ func main() {
 			} else {
 				http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			}
+		})
+
+		http.HandleFunc("/api/xpra/stop", func(w http.ResponseWriter, r *http.Request) {
+			if r.Method == "POST" {
+				appsManager.handleStopXpra(w, r)
+			} else {
+				http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			}
+		})
+
+		// Proxy /xpra/:display/* to localhost:port for HTTPS support
+		http.HandleFunc("/xpra/", func(w http.ResponseWriter, r *http.Request) {
+			appsManager.handleXpraProxy(w, r)
 		})
 
 		log.Printf("Apps functionality enabled (apps path: %s)", *appsPath)

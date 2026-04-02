@@ -155,7 +155,8 @@ func (a *App) addAction(action *Action) {
 // parseVars extracts variables from shell code
 func (a *App) parseVars(code string) {
 	lines := strings.Split(code, "\n")
-	re := regexp.MustCompile(`^([A-Z_][A-Z0-9_]*)=(.+)$`)
+	// Allow both uppercase and lowercase variable names
+	re := regexp.MustCompile(`^([A-Za-z_][A-Za-z0-9_]*)=(.+)$`)
 
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
@@ -186,7 +187,7 @@ func (a *App) ListActions() []string {
 	return actions
 }
 
-func (a *App) ExecuteAction(actionName string, target string) (*ExecutionResult, error) {
+func (a *App) ExecuteAction(actionName string, target string, mode string) (*ExecutionResult, error) {
 	action, exists := a.Actions[actionName]
 	if !exists {
 		return nil, fmt.Errorf("action '%s' not found", actionName)
@@ -215,7 +216,13 @@ func (a *App) ExecuteAction(actionName string, target string) (*ExecutionResult,
 	script += action.Code
 
 	// Determine execution mode
-	if target != "" {
+	if mode == "xpra" {
+		// Xpra mode - return command for xpra execution
+		return &ExecutionResult{
+			Output:   fmt.Sprintf("Xpra mode: command prepared for %s", a.Name),
+			ExitCode: 0,
+		}, nil
+	} else if target != "" {
 		// Terminal app - run in tmux
 		return a.executeInTmux(script, env, target)
 	} else {
