@@ -1,14 +1,14 @@
 [Unit]
 Description=wmux Multi-Host Manager for %i
-After=network-online.target tailscaled.service amux@%i.service
-Wants=network-online.target amux@%i.service
+After=network-online.target tailscaled.service
+Wants=network-online.target
 
 [Service]
 Type=simple
 User=%i
 Group=%i
 WorkingDirectory=/home/%i
-ExecStart=/usr/local/bin/wmux --multi-host --expose-hosts --tls --amux-url http://localhost:2023
+ExecStart=/usr/local/bin/wmux --multi-host --expose-hosts --tls
 Restart=on-failure
 RestartSec=5s
 

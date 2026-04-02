@@ -25,6 +25,33 @@ const (
 	BuildDate = "2026-04-02"
 )
 
+// Apps configuration and management
+type AppsConfig struct {
+	AppsPath         string
+	XpraEnabled      bool
+	XpraStartDisplay int
+	XpraStartPort    int
+}
+
+type AppsManager struct {
+	config       *AppsConfig
+	apps         map[string]*App
+	xpraSessions map[int]*XpraSession
+}
+
+type AppSummary struct {
+	Name    string   `json:"name"`
+	Title   string   `json:"title"`
+	Path    string   `json:"path"`
+	Actions []string `json:"actions"`
+}
+
+type RunAppRequest struct {
+	Target string `json:"target"` // "screen", "new", or session name
+	Mode   string `json:"mode"`   // "terminal", "xpra", "vnc"
+	Action string `json:"action"` // optional, defaults to "run"
+}
+
 var upgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool {
 		return true
@@ -230,6 +257,146 @@ func listTmuxSessions() ([]string, error) {
 		}
 	}
 	return result, nil
+}
+
+// Apps management methods
+
+func newAppsManager(config *AppsConfig) *AppsManager {
+	return &AppsManager{
+		config:       config,
+		apps:         make(map[string]*App),
+		xpraSessions: make(map[int]*XpraSession),
+	}
+}
+
+func (am *AppsManager) loadApps() error {
+	files, err := filepath.Glob(filepath.Join(am.config.AppsPath, "*.md"))
+	if err != nil {
+		return err
+	}
+
+	for _, file := range files {
+		app, err := ParseActionFile(file)
+		if err != nil {
+			log.Printf("Warning: Failed to parse %s: %v", file, err)
+			continue
+		}
+		am.apps[app.Name] = app
+	}
+
+	log.Printf("Loaded %d apps from %s", len(am.apps), am.config.AppsPath)
+	return nil
+}
+
+// HTTP Handlers for Apps API
+
+func (am *AppsManager) handleListApps(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	apps := make([]*AppSummary, 0, len(am.apps))
+	for _, app := range am.apps {
+		apps = append(apps, &AppSummary{
+			Name:    app.Name,
+			Title:   app.Title,
+			Path:    app.Path,
+			Actions: app.ListActions(),
+		})
+	}
+
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"apps": apps,
+	})
+}
+
+func (am *AppsManager) handleGetApp(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	// Extract app name from path: /api/apps/{name}
+	path := strings.TrimPrefix(r.URL.Path, "/api/apps/")
+	parts := strings.Split(path, "/")
+	if len(parts) == 0 || parts[0] == "" {
+		http.Error(w, "App name required", http.StatusBadRequest)
+		return
+	}
+	name := parts[0]
+
+	app, exists := am.apps[name]
+	if !exists {
+		http.Error(w, "App not found", http.StatusNotFound)
+		return
+	}
+
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"name":    app.Name,
+		"title":   app.Title,
+		"path":    app.Path,
+		"actions": app.ListActions(),
+		"vars":    app.Vars,
+	})
+}
+
+func (am *AppsManager) handleRunApp(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	// Extract app name from path: /api/apps/{name}/run
+	path := strings.TrimPrefix(r.URL.Path, "/api/apps/")
+	parts := strings.Split(path, "/")
+	if len(parts) < 2 || parts[0] == "" {
+		http.Error(w, "App name required", http.StatusBadRequest)
+		return
+	}
+	name := parts[0]
+
+	app, exists := am.apps[name]
+	if !exists {
+		http.Error(w, "App not found", http.StatusNotFound)
+		return
+	}
+
+	// Parse request body
+	var req RunAppRequest
+	if r.Body != nil {
+		json.NewDecoder(r.Body).Decode(&req)
+	}
+
+	// Set defaults
+	if req.Action == "" {
+		req.Action = "run"
+	}
+	if req.Mode == "" {
+		req.Mode = "terminal"
+	}
+	if req.Target == "" {
+		req.Target = "screen" // Default to "screen" session
+	}
+
+	log.Printf("Running %s/%s in target=%s", name, req.Action, req.Target)
+
+	// Execute the action
+	result, err := app.ExecuteAction(req.Action, req.Target)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Execution failed: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status": "success",
+		"result": result,
+		"target": req.Target,
+	})
+}
+
+func (am *AppsManager) handleListXpraSessions(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	sessions := make([]*XpraSessionInfo, 0)
+	for _, session := range am.xpraSessions {
+		sessions = append(sessions, session.Info())
+	}
+
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"sessions": sessions,
+	})
 }
 
 func makeWebSocketHandler(defaultSession string) http.HandlerFunc {
@@ -527,7 +694,8 @@ func main() {
 	multiHost := flag.Bool("multi-host", false, "Enable multi-host mode (host selector interface)")
 	exposeHosts := flag.Bool("expose-hosts", false, "Auto-discover hosts (requires --multi-host)")
 	defaultSession := flag.String("default-session", "screen", "Default session to auto-connect on all machines (default: 'screen')")
-	amuxURL := flag.String("amux-url", "http://localhost:2023", "URL for amux API server (default: http://localhost:2023)")
+	noApps := flag.Bool("no-apps", false, "Disable apps functionality")
+	appsPath := flag.String("apps-path", "", "Path to .dotapps directory (default: ~/.dotapps)")
 	tlsEnable := flag.Bool("tls", false, "Enable HTTPS/TLS")
 	tlsCert := flag.String("tls-cert", "", "TLS certificate file (default: ~/.wmux/wmux.crt)")
 	tlsKey := flag.String("tls-key", "", "TLS key file (default: ~/.wmux/wmux.key)")
@@ -540,22 +708,25 @@ func main() {
 		os.Exit(0)
 	}
 
+	// Set default paths
+	home, err := os.UserHomeDir()
+	if err != nil {
+		log.Fatal("Could not determine home directory:", err)
+	}
+
 	// Set default TLS cert paths if not specified
 	if *tlsCert == "" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			log.Fatal("Could not determine home directory:", err)
-		}
 		certPath := filepath.Join(home, ".wmux", "wmux.crt")
 		tlsCert = &certPath
 	}
 	if *tlsKey == "" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			log.Fatal("Could not determine home directory:", err)
-		}
 		keyPath := filepath.Join(home, ".wmux", "wmux.key")
 		tlsKey = &keyPath
+	}
+
+	// Set default apps path if not specified
+	if *appsPath == "" {
+		*appsPath = filepath.Join(home, ".dotapps")
 	}
 
 	log.Printf("wmux v%s - Web-based tmux Controller\n", Version)
@@ -610,56 +781,66 @@ func main() {
 			"defaultSession": *defaultSession,
 			"multiHost":      *multiHost,
 			"exposeHosts":    *exposeHosts,
+			"appsEnabled":    !*noApps,
 		})
 	})
 
-	// Apps proxy - forward /api/apps* to amux server
-	proxyHandler := func(w http.ResponseWriter, r *http.Request) {
-		targetPath := r.URL.Path
-		if r.URL.RawQuery != "" {
-			targetPath += "?" + r.URL.RawQuery
-		}
-		targetURL := *amuxURL + targetPath
-
-		// Create proxy request
-		proxyReq, err := http.NewRequest(r.Method, targetURL, r.Body)
-		if err != nil {
-			http.Error(w, "Failed to create proxy request", http.StatusInternalServerError)
-			return
+	// Apps functionality (if enabled)
+	var appsManager *AppsManager
+	if !*noApps {
+		appsConfig := &AppsConfig{
+			AppsPath:         *appsPath,
+			XpraEnabled:      true,
+			XpraStartDisplay: 10,
+			XpraStartPort:    10000,
 		}
 
-		// Copy headers
-		for key, values := range r.Header {
-			for _, value := range values {
-				proxyReq.Header.Add(key, value)
+		appsManager = newAppsManager(appsConfig)
+
+		// Load apps from .dotapps directory
+		if err := appsManager.loadApps(); err != nil {
+			log.Printf("Warning: Failed to load apps: %v", err)
+		}
+
+		// Register apps API endpoints
+		http.HandleFunc("/api/apps", func(w http.ResponseWriter, r *http.Request) {
+			if r.Method == "GET" {
+				appsManager.handleListApps(w, r)
+			} else {
+				http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			}
-		}
+		})
 
-		// Execute request
-		client := &http.Client{}
-		resp, err := client.Do(proxyReq)
-		if err != nil {
-			http.Error(w, "Failed to reach amux: "+err.Error(), http.StatusBadGateway)
-			return
-		}
-		defer resp.Body.Close()
+		http.HandleFunc("/api/apps/", func(w http.ResponseWriter, r *http.Request) {
+			path := r.URL.Path
 
-		// Copy response headers
-		for key, values := range resp.Header {
-			for _, value := range values {
-				w.Header().Add(key, value)
+			// /api/apps/{name}/run
+			if strings.HasSuffix(path, "/run") && r.Method == "POST" {
+				appsManager.handleRunApp(w, r)
+				return
 			}
-		}
 
-		// Copy status code
-		w.WriteHeader(resp.StatusCode)
+			// /api/apps/{name}
+			if r.Method == "GET" {
+				appsManager.handleGetApp(w, r)
+				return
+			}
 
-		// Copy body
-		io.Copy(w, resp.Body)
+			http.Error(w, "Not found", http.StatusNotFound)
+		})
+
+		http.HandleFunc("/api/xpra/sessions", func(w http.ResponseWriter, r *http.Request) {
+			if r.Method == "GET" {
+				appsManager.handleListXpraSessions(w, r)
+			} else {
+				http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			}
+		})
+
+		log.Printf("Apps functionality enabled (apps path: %s)", *appsPath)
+	} else {
+		log.Printf("Apps functionality disabled (--no-apps)")
 	}
-
-	http.HandleFunc("/api/apps", proxyHandler)
-	http.HandleFunc("/api/apps/", proxyHandler)
 
 	if *bindAll {
 		log.Printf("WARNING: Exposed to all interfaces!\n")
