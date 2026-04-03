@@ -98,30 +98,40 @@ async function route() {
 
     // In multi-host mode, check for auto-connect or show hosts dialog
     if (appConfig.multiHost && !hostParam) {
-        // Check if there's an auto-connect host
         const autoConnectHost = localStorage.getItem('wmux_auto_connect_host');
         const currentServer = `${window.location.protocol}//${window.location.host}`;
 
+        // Auto-connect to different server
         if (autoConnectHost && autoConnectHost !== currentServer) {
-            // Auto-connect to different server
-            console.log('Auto-connecting to:', autoConnectHost);
+            console.log('Auto-connecting to remote:', autoConnectHost);
             connectToHost(autoConnectHost);
-            return; // Don't show dialog - redirecting
+            return;
         }
 
-        // Check if current server has a backend
+        // Auto-connect to current server (this server)
+        if (autoConnectHost && autoConnectHost === currentServer) {
+            console.log('Auto-connect to current server - initApp will handle connection');
+            // Do nothing - initApp() will connect normally
+            return;
+        }
+
+        // No auto-connect configured - check if backend exists
         let hasBackend = false;
         try {
-            const response = await fetch('/api/config', { method: 'HEAD' });
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 2000); // Increased timeout
+            const response = await fetch('/api/config', {
+                method: 'HEAD',
+                signal: controller.signal
+            });
+            clearTimeout(timeoutId);
             hasBackend = response.ok;
         } catch (err) {
             hasBackend = false;
         }
 
-        // If auto-connect is set to current server but there's no backend, ignore it and show dialog
-        // If there's no auto-connect and no backend, show dialog
-        if (!hasBackend || !autoConnectHost) {
-            // No backend or no auto-connect - open hosts dialog
+        if (!hasBackend) {
+            // No backend - static deployment, show hosts dialog
             setTimeout(() => {
                 const hostsDialog = document.getElementById('hosts-dialog');
                 const hostsOverlay = document.getElementById('hosts-overlay');
@@ -132,7 +142,7 @@ async function route() {
                 }
             }, 100);
         }
-        // If hasBackend && autoConnectHost === currentServer, do nothing - let initApp() handle connection
+        // If hasBackend but no auto-connect, let initApp() connect normally
     }
 }
 
@@ -378,11 +388,19 @@ async function loadSavedHosts() {
     // Check if current server has backend
     let hasBackend = false;
     try {
-        const response = await fetch('/api/config', { method: 'HEAD' });
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 1000); // 1 second timeout
+        const response = await fetch('/api/config', {
+            method: 'HEAD',
+            signal: controller.signal
+        });
+        clearTimeout(timeoutId);
         hasBackend = response.ok;
     } catch (err) {
         hasBackend = false;
     }
+
+    console.log('Backend detection:', hasBackend);
 
     let html = '';
 
@@ -610,7 +628,13 @@ async function loadHostsDialog() {
     // Check if current server has backend
     let hasBackend = false;
     try {
-        const response = await fetch('/api/config', { method: 'HEAD' });
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 1000);
+        const response = await fetch('/api/config', {
+            method: 'HEAD',
+            signal: controller.signal
+        });
+        clearTimeout(timeoutId);
         hasBackend = response.ok;
     } catch (err) {
         hasBackend = false;
@@ -691,12 +715,17 @@ function connectToHost(url) {
         selectedHostIndex = 0;
     }
 
-    if (url === currentServer) {
-        // Already on this server, just ensure terminal view is showing
-        // The terminal should auto-connect via spa-router
+    // app.js is loaded before spa-router.js, so window.connectToBackend should exist
+    if (typeof window.connectToBackend === 'function') {
+        if (url === currentServer) {
+            // Connect to current server (no host parameter)
+            window.connectToBackend();
+        } else {
+            // Connect to remote host
+            window.connectToBackend(url);
+        }
     } else {
-        // Redirect to remote host
-        window.location.href = url;
+        console.error('connectToBackend not available!');
     }
 }
 

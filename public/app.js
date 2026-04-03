@@ -78,26 +78,44 @@ function setupClipboardSupport() {
     });
 }
 
+// Helper function to properly encode UTF-8 to base64
+function utf8ToBase64(str) {
+    try {
+        // Modern approach using TextEncoder
+        const encoder = new TextEncoder();
+        const bytes = encoder.encode(str);
+
+        // Convert Uint8Array to base64
+        let binary = '';
+        for (let i = 0; i < bytes.length; i++) {
+            binary += String.fromCharCode(bytes[i]);
+        }
+        return btoa(binary);
+    } catch (err) {
+        console.error('Base64 encoding failed:', err);
+        // Fallback: try direct btoa
+        return btoa(str);
+    }
+}
+
 // Clipboard support - Paste
 async function pasteFromClipboard() {
+    if (!connected || !sessionActive) {
+        return;
+    }
+
     try {
         const text = await navigator.clipboard.readText();
         if (text) {
-            if (connected && sessionActive) {
-                send({
-                    type: 'input',
-                    data: btoa(text)
-                });
-                console.log('Pasted:', text.substring(0, 50) + (text.length > 50 ? '...' : ''));
-            } else {
-                console.log('Not connected or no active session');
-            }
+            send({
+                type: 'input',
+                data: utf8ToBase64(text)
+            });
         }
     } catch (err) {
-        console.error('Paste failed:', err);
-        // Fallback: show message in terminal
+        console.error('Paste failed:', err.name);
         if (sessionActive) {
-            term.write('\r\n\x1b[33mClipboard access denied. Please grant clipboard permissions.\x1b[0m\r\n');
+            term.write('\r\n\x1b[33mClipboard paste failed: ' + err.message + '\x1b[0m\r\n');
         }
     }
 }
@@ -323,6 +341,7 @@ function setupEventListeners() {
     // Handle terminal input
     term.onData((data) => {
         if (connected && sessionActive) {
+            // xterm.js onData provides binary string, use btoa directly
             send({
                 type: 'input',
                 data: btoa(data)
@@ -475,6 +494,7 @@ function setupMobileKeyboard() {
 let ws = null;
 let connected = false;
 let sessionActive = false;
+let currentRemoteHost = null; // Track remote host for reconnections
 let reconnectAttempts = 0;
 let maxReconnectAttempts = 10;
 let reconnectTimeout = null;
@@ -823,20 +843,49 @@ function updateWindowsList(windows) {
     renderWindows(windowsCache);
 }
 
-function connect() {
+function connect(remoteHost) {
+    // Save remote host for reconnections
+    if (remoteHost) {
+        currentRemoteHost = remoteHost;
+    }
+
+    // Use saved remote host if reconnecting
+    const targetHost = remoteHost || currentRemoteHost;
+
     // Check if this is remote hosting (no ?host parameter means auto-detect)
     const urlParams = new URLSearchParams(window.location.search);
     const hostParam = urlParams.get('host');
 
     // If no host parameter and this is first connection, try to detect
-    if (!hostParam && reconnectAttempts === 0 && !sessionStorage.getItem('wmux_mode_detected')) {
+    if (!hostParam && !targetHost && reconnectAttempts === 0 && !sessionStorage.getItem('wmux_mode_detected')) {
         // Mark that we're attempting detection
         sessionStorage.setItem('wmux_mode_detected', 'trying');
     }
 
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${window.location.host}/ws`;
+    let wsUrl;
+    if (targetHost) {
+        // Connect to remote host
+        try {
+            const url = new URL(targetHost);
 
+            // IMPORTANT: Use WebSocket protocol that matches CURRENT page, not target
+            // Browser blocks ws:// from https:// page and wss:// from http:// page (mixed content)
+            const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            wsUrl = `${wsProtocol}//${url.host}/ws`;
+
+            console.log(`Target: ${targetHost}, Current page: ${window.location.protocol}, Using: ${wsProtocol}`);
+        } catch (err) {
+            console.error('Invalid remote host URL:', targetHost);
+            updateStatus('Invalid host URL', false);
+            return;
+        }
+    } else {
+        // Connect to current server
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        wsUrl = `${protocol}//${window.location.host}/ws`;
+    }
+
+    console.log('Connecting to:', wsUrl);
     ws = new WebSocket(wsUrl);
 
     ws.onopen = () => {
@@ -1031,7 +1080,74 @@ function connect() {
         updateStatus('Connection error', false);
         console.error('WebSocket error:', error);
     };
+
+    ws.onclose = (event) => {
+        updateStatus('Disconnected', false);
+        term.write('\r\n\x1b[33mDisconnected from server\x1b[0m\r\n');
+        sessionActive = false;
+        connected = false;
+        ws = null;
+
+        // If WSS connection failed immediately (likely certificate issue)
+        if (wsUrl.startsWith('wss://') && reconnectAttempts === 0 && !event.wasClean) {
+            const hostUrl = wsUrl.replace('wss://', 'https://').replace('/ws', '');
+
+            term.write('\r\n\x1b[31mSecure WebSocket connection failed!\x1b[0m\r\n');
+            term.write('\x1b[33mOpening certificate acceptance page...\x1b[0m\r\n\r\n');
+
+            // Auto-open the HTTPS URL in a new window
+            const certWindow = window.open(hostUrl, '_blank');
+
+            if (certWindow) {
+                term.write('\x1b[36mSteps:\x1b[0m\r\n');
+                term.write('\x1b[36m1. Accept the certificate in the new tab\x1b[0m\r\n');
+                term.write('\x1b[36m2. Return here and reconnect\x1b[0m\r\n\r\n');
+            } else {
+                term.write(`\x1b[36mPlease open: ${hostUrl}\x1b[0m\r\n`);
+                term.write('\x1b[36mAccept the certificate, then reconnect\x1b[0m\r\n\r\n');
+            }
+
+            // Don't auto-reconnect for certificate issues
+            return;
+        }
+
+        // If first connection failed and no ?host param, likely remote hosting
+        const urlParams = new URLSearchParams(window.location.search);
+        const hostParam = urlParams.get('host');
+
+        if (reconnectAttempts === 0 && !hostParam && sessionStorage.getItem('wmux_mode_detected') === 'trying') {
+            sessionStorage.removeItem('wmux_mode_detected');
+            console.log('No local wmux server detected');
+
+            // In SPA mode, show host selector; otherwise redirect
+            if (window.spaMode && typeof window.showView === 'function') {
+                window.showView('host-selector');
+            } else {
+                window.location.href = '/host-manager.html';
+            }
+            return;
+        }
+
+        // Auto-reconnect with backoff: 1s, 2s, 3s, 5s, 10s, 15s, 30s, 30s...
+        if (reconnectAttempts < maxReconnectAttempts) {
+            const delays = [1000, 2000, 3000, 5000, 10000, 15000, 30000];
+            const delay = delays[Math.min(reconnectAttempts, delays.length - 1)];
+            reconnectAttempts++;
+            term.write(`\x1b[33mReconnecting in ${delay/1000}s (attempt ${reconnectAttempts}/${maxReconnectAttempts})...\x1b[0m\r\n`);
+            updateStatus(`Reconnecting (${reconnectAttempts}/${maxReconnectAttempts})...`, false);
+
+            reconnectTimeout = setTimeout(() => {
+                connect();
+            }, delay);
+        } else {
+            term.write('\x1b[31mMax reconnection attempts reached. Click "Reconnect to Server" to try again.\x1b[0m\r\n');
+            updateStatus('Disconnected (manual reconnect required)', false);
+        }
+    };
 }
+
+// Expose connect function for multi-host mode (must be here, not at end of file)
+window.connectToBackend = connect;
 
 function send(msg) {
     if (ws && ws.readyState === WebSocket.OPEN) {

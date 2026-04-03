@@ -334,14 +334,18 @@
     <script src="vendor/xterm.js"></script>
     <script src="vendor/xterm-addon-fit.js"></script>
     <script src="vendor/xterm-addon-web-links.js"></script>
-    <script src="spa-router.js"></script>
     <script src="app.js"></script>
+    <script src="spa-router.js"></script>
     <script>
-        // Register service worker
+        // Disable service worker for now - causing issues
+        // Unregister any existing service workers
         if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.register('/service-worker.js')
-                .then(registration => console.log('Service Worker registered:', registration))
-                .catch(error => console.log('Service Worker registration failed:', error));
+            navigator.serviceWorker.getRegistrations().then(function(registrations) {
+                for(let registration of registrations) {
+                    registration.unregister();
+                    console.log('Service Worker unregistered');
+                }
+            });
         }
     </script>
 </body>

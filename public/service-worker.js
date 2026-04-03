@@ -1,37 +1,13 @@
-const CACHE_NAME = 'wmux-v2';
-const urlsToCache = [
-  '/',
-  '/style.css',
-  '/app.js',
-  '/spa-router.js',
-  '/vendor/xterm.js',
-  '/vendor/xterm.css',
-  '/vendor/xterm-addon-fit.js',
-  '/vendor/xterm-addon-web-links.js',
-  '/SauceCodeProNF-Regular.ttf',
-  '/SauceCodeProNF-Bold.ttf',
-  '/SourceCodePro-Regular.ttf'
-];
+const CACHE_NAME = 'wmux-v5';
 
 self.addEventListener('install', event => {
-  event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then(cache => cache.addAll(urlsToCache))
-  );
+  // Skip waiting to activate immediately
+  self.skipWaiting();
 });
 
 self.addEventListener('fetch', event => {
-  event.respondWith(
-    caches.match(event.request)
-      .then(response => {
-        // Cache hit - return response
-        if (response) {
-          return response;
-        }
-        return fetch(event.request);
-      }
-    )
-  );
+  // Just pass through to network, don't cache anything
+  event.respondWith(fetch(event.request));
 });
 
 self.addEventListener('activate', event => {

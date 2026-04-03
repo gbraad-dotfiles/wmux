@@ -4,7 +4,7 @@
   "description": "Control your tmux sessions from a web browser with full mouse support",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#00000",
+  "background_color": "#000000",
   "orientation": "any",
   "icons": [
     {
