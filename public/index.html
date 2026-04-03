@@ -192,11 +192,30 @@
                 <div id="windows-list" style="flex: 1; height: 400px; min-height: 400px; max-height: 400px; overflow-y: auto; border: 1px solid var(--border); border-radius: 4px; background: var(--bg-tertiary); margin-bottom: 15px;">
                     <div style="text-align: center; color: var(--text-secondary); padding: 20px;">No windows available</div>
                 </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px;">
+                    <button id="close-window" class="control-btn">Close</button>
+                    <button id="rename-window" class="control-btn">Rename</button>
+                </div>
                 <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px;">
                     <button id="prev-window" class="control-btn" style="font-size: 1.2em;">&lt;</button>
                     <button id="new-window" class="control-btn" style="font-size: 1.2em;">+</button>
                     <button id="next-window" class="control-btn" style="font-size: 1.2em;">&gt;</button>
                 </div>
+            </div>
+        </div>
+
+        <div class="dialog-overlay" id="rename-window-overlay"></div>
+        <div class="dialog" id="rename-window-dialog" style="max-width: 400px;">
+            <div class="dialog-header">
+                <div class="dialog-title">Rename Window</div>
+                <button class="dialog-close" id="close-rename-window">×</button>
+            </div>
+            <div class="dialog-content">
+                <div class="form-field">
+                    <label>Window Name</label>
+                    <input type="text" id="rename-window-input" placeholder="New window name" />
+                </div>
+                <button class="control-btn" id="rename-window-submit" style="background: var(--accent); border-color: var(--accent); width: 100%; margin-top: 10px;">Rename</button>
             </div>
         </div>
 

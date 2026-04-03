@@ -152,7 +152,8 @@ function setupEventListeners() {
                 { dialog: 'windows-dialog', overlay: 'windows-overlay' },
                 { dialog: 'controls-dialog', overlay: 'controls-overlay' },
                 { dialog: 'confirm-kill-dialog', overlay: 'confirm-kill-overlay' },
-                { dialog: 'add-host-dialog', overlay: 'add-host-overlay' }
+                { dialog: 'add-host-dialog', overlay: 'add-host-overlay' },
+                { dialog: 'rename-window-dialog', overlay: 'rename-window-overlay' }
             ];
 
             let closedAny = false;
@@ -747,11 +748,11 @@ function renderWindows(windows) {
 
     listEl.innerHTML = windows.map((w, idx) => {
         const isSelected = idx === selectedWindowIndex;
-        const displayText = `${w.index}: ${w.name}${w.active ? ' *' : ''}`;
+        const displayText = `${w.index}: ${w.name}`;
         const highlightedText = highlightMatches(displayText, windowSearchQuery);
 
         return `
-            <div class="app-item window-item" data-index="${idx}" data-window-index="${w.index}" style="cursor: pointer; ${isSelected ? 'background: var(--accent); border-color: var(--accent);' : (w.active ? 'background: #2a2a2a;' : '')}">
+            <div class="app-item window-item" data-index="${idx}" data-window-index="${w.index}" style="cursor: pointer; ${isSelected ? 'background: var(--accent); border-color: var(--accent);' : ''}">
                 <div style="flex: 1; color: var(--text-primary);">${highlightedText}</div>
             </div>
         `;
@@ -810,6 +811,15 @@ function performWindowSearch(query) {
 
 function updateWindowsList(windows) {
     windowsCache = windows || [];
+
+    // If no search query, set selection to active window
+    if (!windowSearchQuery) {
+        const activeIndex = windowsCache.findIndex(w => w.active);
+        if (activeIndex !== -1) {
+            selectedWindowIndex = activeIndex;
+        }
+    }
+
     renderWindows(windowsCache);
 }
 
@@ -1375,7 +1385,7 @@ function handleWindowsKeydown(e) {
         return false;
     }
 
-    // Handle navigation keys
+    // Up/Down = navigate list selection
     if (e.key === 'ArrowDown') {
         e.preventDefault();
         selectedWindowIndex = Math.min(selectedWindowIndex + 1, filteredWindows.length - 1);
@@ -1387,6 +1397,33 @@ function handleWindowsKeydown(e) {
         e.preventDefault();
         selectedWindowIndex = Math.max(selectedWindowIndex - 1, 0);
         renderWindows(filteredWindows);
+        return true;
+    }
+
+    // ArrowLeft = previous window (tmux action)
+    if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        sendTmuxKey('p');
+        // Refresh window list to update active state
+        setTimeout(() => send({ type: 'list_windows' }), 100);
+        return true;
+    }
+
+    // ArrowRight = next window (tmux action)
+    if (e.key === 'ArrowRight') {
+        e.preventDefault();
+        sendTmuxKey('n');
+        // Refresh window list to update active state
+        setTimeout(() => send({ type: 'list_windows' }), 100);
+        return true;
+    }
+
+    // = or + = new window
+    if (e.key === '=' || e.key === '+') {
+        e.preventDefault();
+        sendTmuxKey('c');
+        // Refresh window list to show new window
+        setTimeout(() => send({ type: 'list_windows' }), 100);
         return true;
     }
 
@@ -1534,6 +1571,20 @@ function handlePanesKeydown(e) {
     if (e.key === 'v' || e.key === 'V') {
         e.preventDefault();
         highlightPaneButton('split-v');
+        return true;
+    }
+
+    // \ or | for Horizontal split (execute directly)
+    if (e.key === '\\' || e.key === '|') {
+        e.preventDefault();
+        sendTmuxKey('%');
+        return true;
+    }
+
+    // - or _ for Vertical split (execute directly)
+    if (e.key === '-' || e.key === '_') {
+        e.preventDefault();
+        sendTmuxKey('"');
         return true;
     }
 
@@ -1868,12 +1919,102 @@ document.getElementById('prev-window').addEventListener('click', () => {
     sendTmuxKey('p');
 });
 
+document.getElementById('close-window').addEventListener('click', () => {
+    sendTmuxKey('&');
+});
+
+document.getElementById('rename-window').addEventListener('click', () => {
+    const renameDialog = document.getElementById('rename-window-dialog');
+    const renameOverlay = document.getElementById('rename-window-overlay');
+    const renameInput = document.getElementById('rename-window-input');
+
+    // Get current window name if possible
+    if (filteredWindows.length > 0 && selectedWindowIndex >= 0 && selectedWindowIndex < filteredWindows.length) {
+        const currentWindow = filteredWindows[selectedWindowIndex];
+        renameInput.value = currentWindow.name;
+    } else {
+        renameInput.value = '';
+    }
+
+    // Close Windows dialog
+    windowsDialog.classList.remove('active');
+    windowsOverlay.classList.remove('active');
+
+    // Open rename dialog
+    renameDialog.classList.add('active');
+    renameOverlay.classList.add('active');
+
+    // Focus the input
+    setTimeout(() => renameInput.focus(), 100);
+});
+
 document.getElementById('close-pane').addEventListener('click', () => {
     sendTmuxKey('x');
 });
 
 document.getElementById('zoom-pane').addEventListener('click', () => {
     sendTmuxKey('z');
+});
+
+// Rename window dialog handlers
+const renameWindowDialog = document.getElementById('rename-window-dialog');
+const renameWindowOverlay = document.getElementById('rename-window-overlay');
+const renameWindowInput = document.getElementById('rename-window-input');
+const closeRenameWindow = document.getElementById('close-rename-window');
+const renameWindowSubmit = document.getElementById('rename-window-submit');
+
+closeRenameWindow.addEventListener('click', () => {
+    renameWindowDialog.classList.remove('active');
+    renameWindowOverlay.classList.remove('active');
+});
+
+renameWindowOverlay.addEventListener('click', () => {
+    renameWindowDialog.classList.remove('active');
+    renameWindowOverlay.classList.remove('active');
+});
+
+renameWindowSubmit.addEventListener('click', () => {
+    const newName = renameWindowInput.value.trim();
+
+    // Close rename dialog
+    renameWindowDialog.classList.remove('active');
+    renameWindowOverlay.classList.remove('active');
+
+    if (newName && sessionActive) {
+        // Send tmux rename command: Ctrl+b, comma, new-name, Enter
+        send({ type: 'input', data: btoa('\x02') }); // Ctrl+b (prefix)
+        setTimeout(() => {
+            send({ type: 'input', data: btoa(',') }); // comma (rename command)
+            setTimeout(() => {
+                // Clear existing name and type new one
+                send({ type: 'input', data: btoa('\x15') }); // Ctrl+U to clear line
+                setTimeout(() => {
+                    send({ type: 'input', data: btoa(newName) }); // new name
+                    setTimeout(() => {
+                        send({ type: 'input', data: btoa('\r') }); // Enter (carriage return)
+                        // Refocus terminal after command completes
+                        setTimeout(() => term.focus(), 100);
+                    }, 50);
+                }, 50);
+            }, 50);
+        }, 50);
+    }
+
+    // Refocus terminal
+    term.focus();
+});
+
+// Allow Enter key to submit rename
+renameWindowInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+        e.preventDefault();
+        renameWindowSubmit.click();
+    }
+    if (e.key === 'Escape') {
+        e.preventDefault();
+        renameWindowDialog.classList.remove('active');
+        renameWindowOverlay.classList.remove('active');
+    }
 });
 
 // Prevent body scrolling on mobile
