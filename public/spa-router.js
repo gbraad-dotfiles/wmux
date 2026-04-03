@@ -76,6 +76,9 @@ function highlightMatchesHost(text, query) {
 async function initSPA() {
     try {
         const response = await fetch('/api/config');
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
         appConfig = await response.json();
     } catch (err) {
         console.error('Failed to load config:', err);
@@ -92,25 +95,33 @@ function route() {
     // Always show terminal view
     showView('terminal');
 
-    // In multi-host mode, auto-open hosts dialog
+    // In multi-host mode, check for auto-connect or show hosts dialog
     if (appConfig.multiHost && !hostParam) {
         // Check if there's an auto-connect host
         const autoConnectHost = localStorage.getItem('wmux_auto_connect_host');
         if (autoConnectHost) {
-            // Auto-connect to the configured host
-            connectToHost(autoConnectHost);
-        } else {
-            // Open hosts dialog after a short delay
-            setTimeout(() => {
-                const hostsDialog = document.getElementById('hosts-dialog');
-                const hostsOverlay = document.getElementById('hosts-overlay');
-                if (hostsDialog && hostsOverlay) {
-                    loadHostsDialog();
-                    hostsDialog.classList.add('active');
-                    hostsOverlay.classList.add('active');
-                }
-            }, 100);
+            // Auto-connect silently (no dialog)
+            console.log('Auto-connecting to:', autoConnectHost);
+            const currentServer = `${window.location.protocol}//${window.location.host}`;
+
+            // Only call connectToHost if it's a different server
+            // (If same server, we're already connected - do nothing)
+            if (autoConnectHost !== currentServer) {
+                connectToHost(autoConnectHost);
+            }
+            return; // Don't show dialog
         }
+
+        // No auto-connect configured - open hosts dialog after a short delay
+        setTimeout(() => {
+            const hostsDialog = document.getElementById('hosts-dialog');
+            const hostsOverlay = document.getElementById('hosts-overlay');
+            if (hostsDialog && hostsOverlay) {
+                loadHostsDialog();
+                hostsDialog.classList.add('active');
+                hostsOverlay.classList.add('active');
+            }
+        }, 100);
     }
 }
 

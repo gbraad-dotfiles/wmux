@@ -36,3 +36,10 @@ wmux-capacitor/www/
 *.rpm
 *.src.rpm
 rpmbuild/
+
+# Generated icons (run ./sync-icons.sh to regenerate)
+public/icon-192.png
+public/icon-512.png
+wmux-capacitor/www/icon-*.png
+wmux-capacitor/android/app/src/main/assets/public/icon-*.png
+wmux-capacitor/android/app/src/main/res/mipmap-*/ic_launcher*.png

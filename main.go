@@ -277,6 +277,12 @@ func (am *AppsManager) loadApps() error {
 	}
 
 	for _, file := range files {
+		// Skip README.md files
+		basename := filepath.Base(file)
+		if strings.EqualFold(basename, "README.md") {
+			continue
+		}
+
 		app, err := ParseActionFile(file)
 		if err != nil {
 			log.Printf("Warning: Failed to parse %s: %v", file, err)
@@ -304,6 +310,12 @@ func (am *AppsManager) handleListApps(w http.ResponseWriter, r *http.Request) {
 
 	apps := make([]*AppSummary, 0)
 	for _, file := range files {
+		// Skip README.md files
+		basename := filepath.Base(file)
+		if strings.EqualFold(basename, "README.md") {
+			continue
+		}
+
 		app, err := ParseActionFile(file)
 		if err != nil {
 			log.Printf("Warning: failed to parse %s: %v", file, err)

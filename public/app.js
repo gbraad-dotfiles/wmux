@@ -2114,7 +2114,7 @@ async function restoreXpraSessions() {
         const data = await response.json();
         if (!data.sessions || data.sessions.length === 0) return;
 
-        // Restore each active session
+        // Restore each active session (buttons only, don't show apps)
         for (const session of data.sessions) {
             const button = createXpraAppButton(session.app_name);
             activeXpraApps.set(session.app_name, {
@@ -2123,10 +2123,9 @@ async function restoreXpraSessions() {
             });
         }
 
-        // Show the first app
-        if (data.sessions.length > 0) {
-            showXpraView(data.sessions[0].app_name);
-        }
+        // Don't auto-show any app - keep terminal visible
+        // User can click app button to switch to it
+        console.log(`Restored ${data.sessions.length} xpra session(s)`);
     } catch (err) {
         console.error('Failed to restore xpra sessions:', err);
     }
