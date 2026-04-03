@@ -70,9 +70,9 @@ function setupClipboardSupport() {
     // Clipboard support - Copy
     term.onSelectionChange(() => {
         const selection = term.getSelection();
-        if (selection) {
+        if (selection && sessionActive) {
             navigator.clipboard.writeText(selection).catch(err => {
-                console.log('Copy failed:', err);
+                // Silently fail - don't spam console
             });
         }
     });
@@ -931,6 +931,8 @@ function connect() {
                 }
 
                 // Show controls and windows buttons
+                document.getElementById('apps-btn').style.display = 'block';
+                document.getElementById('sessions-btn').style.display = 'block';
                 document.getElementById('controls-btn').style.display = 'block';
                 document.getElementById('windows-btn').style.display = 'block';
 
@@ -957,6 +959,8 @@ function connect() {
                 currentSessionName = null;
 
                 // Hide controls and windows buttons
+                document.getElementById('apps-btn').style.display = 'none';
+                document.getElementById('sessions-btn').style.display = 'none';
                 document.getElementById('controls-btn').style.display = 'none';
                 document.getElementById('windows-btn').style.display = 'none';
 
@@ -2260,7 +2264,7 @@ async function restoreXpraSessions() {
 }
 
 // Main initialization function for SPA
-function initApp() {
+async function initApp() {
     if (!term) {
         initTerminal();
         setupClipboardSupport();
@@ -2269,8 +2273,31 @@ function initApp() {
         setupEventListeners();
         startDebugUpdates();
     }
-    connect();
-    restoreXpraSessions();
+
+    // Check if we should auto-connect
+    const urlParams = new URLSearchParams(window.location.search);
+    const hostParam = urlParams.get('host');
+
+    // Try to detect if backend is available
+    let hasBackend = false;
+    try {
+        const response = await fetch('/api/config', { method: 'HEAD' });
+        hasBackend = response.ok;
+    } catch (err) {
+        hasBackend = false;
+    }
+
+    // Only connect if:
+    // 1. There's a host parameter (explicit connection to different host)
+    // 2. OR backend is available on current server
+    if (hostParam || hasBackend) {
+        connect();
+        restoreXpraSessions();
+    } else {
+        // No backend - static deployment mode
+        console.log('No local backend detected - multi-host mode');
+        updateStatus('No connection', false);
+    }
 }
 
 // For backwards compatibility and SPA routing

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'wmux-v1';
+const CACHE_NAME = 'wmux-v2';
 const urlsToCache = [
   '/',
   '/style.css',
@@ -7,7 +7,10 @@ const urlsToCache = [
   '/vendor/xterm.js',
   '/vendor/xterm.css',
   '/vendor/xterm-addon-fit.js',
-  '/vendor/xterm-addon-web-links.js'
+  '/vendor/xterm-addon-web-links.js',
+  '/SauceCodeProNF-Regular.ttf',
+  '/SauceCodeProNF-Bold.ttf',
+  '/SourceCodePro-Regular.ttf'
 ];
 
 self.addEventListener('install', event => {

@@ -98,26 +98,6 @@
             <div id="discovered-hosts"></div>
             <div id="saved-hosts"></div>
         </div>
-
-        <!-- Add Host Dialog -->
-        <div class="dialog-overlay" id="add-host-overlay"></div>
-        <div class="dialog" id="add-host-dialog">
-            <div class="dialog-header">
-                <div class="dialog-title">Add New Host</div>
-                <button class="dialog-close" id="close-add-host">×</button>
-            </div>
-            <div class="dialog-content">
-                <div class="form-field">
-                    <label>Name</label>
-                    <input type="text" id="host-name-input" placeholder="My Server" />
-                </div>
-                <div class="form-field">
-                    <label>URL</label>
-                    <input type="text" id="host-url-input" placeholder="https://192.168.1.100:2022" />
-                </div>
-                <button class="control-btn" id="add-host-submit" style="background: var(--accent); border-color: var(--accent); width: 100%; margin-top: 10px;">Add Host</button>
-            </div>
-        </div>
     </div>
 
     <!-- View: Terminal (single-host mode or connected) -->
@@ -126,10 +106,10 @@
             <button class="hamburger-button" id="menu-btn">☰</button>
             <div class="banner-title">wmux</div>
             <div id="xpra-app-buttons"></div>
-            <button class="controls-button" id="apps-btn"><span class="btn-full">Apps</span><span class="btn-short">A</span></button>
+            <button class="controls-button" id="apps-btn" style="display: none;"><span class="btn-full">Apps</span><span class="btn-short">A</span></button>
             <button class="controls-button" id="controls-btn" style="display: none;"><span class="btn-full">Panes</span><span class="btn-short">P</span></button>
             <button class="controls-button" id="windows-btn" style="display: none;"><span class="btn-full">Windows</span><span class="btn-short">W</span></button>
-            <button class="controls-button" id="sessions-btn"><span class="btn-full">Sessions</span><span class="btn-short">S</span></button>
+            <button class="controls-button" id="sessions-btn" style="display: none;"><span class="btn-full">Sessions</span><span class="btn-short">S</span></button>
             <button class="controls-button" id="hosts-btn" style="display: none;"><span class="btn-full">Hosts</span><span class="btn-short">H</span></button>
             <div class="connection-indicator" id="status">
                 <span class="indicator-dot"></span>
@@ -292,6 +272,25 @@
                     <div style="padding: 20px; text-align: center; color: var(--text-secondary);">Loading hosts...</div>
                 </div>
                 <button id="show-add-host-dialog" class="control-btn" style="font-size: 1.2em;">+</button>
+            </div>
+        </div>
+
+        <div class="dialog-overlay" id="add-host-overlay"></div>
+        <div class="dialog" id="add-host-dialog" style="max-width: 400px;">
+            <div class="dialog-header">
+                <div class="dialog-title">Add New Host</div>
+                <button class="dialog-close" id="close-add-host">×</button>
+            </div>
+            <div class="dialog-content">
+                <div class="form-field">
+                    <label>Name</label>
+                    <input type="text" id="host-name-input" placeholder="My Server" />
+                </div>
+                <div class="form-field">
+                    <label>URL</label>
+                    <input type="text" id="host-url-input" placeholder="https://100.65.21.100:2022" />
+                </div>
+                <button class="control-btn" id="add-host-submit" style="background: var(--accent); border-color: var(--accent); width: 100%; margin-top: 10px;">Add Host</button>
             </div>
         </div>
 
