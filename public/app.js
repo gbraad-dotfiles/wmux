@@ -105,8 +105,11 @@ async function pasteFromClipboard() {
     }
 
     try {
-        const text = await navigator.clipboard.readText();
+        let text = await navigator.clipboard.readText();
         if (text) {
+            // Normalize line endings - convert CRLF to LF to avoid double newlines
+            text = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+
             send({
                 type: 'input',
                 data: utf8ToBase64(text)
