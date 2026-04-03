@@ -1403,7 +1403,7 @@ function handleWindowsKeydown(e) {
     // ArrowLeft = previous window (tmux action)
     if (e.key === 'ArrowLeft') {
         e.preventDefault();
-        sendTmuxKey('p');
+        send({ type: 'prev_window' });
         // Refresh window list to update active state
         setTimeout(() => send({ type: 'list_windows' }), 100);
         return true;
@@ -1412,7 +1412,7 @@ function handleWindowsKeydown(e) {
     // ArrowRight = next window (tmux action)
     if (e.key === 'ArrowRight') {
         e.preventDefault();
-        sendTmuxKey('n');
+        send({ type: 'next_window' });
         // Refresh window list to update active state
         setTimeout(() => send({ type: 'list_windows' }), 100);
         return true;
@@ -1421,7 +1421,7 @@ function handleWindowsKeydown(e) {
     // = or + = new window
     if (e.key === '=' || e.key === '+') {
         e.preventDefault();
-        sendTmuxKey('c');
+        send({ type: 'new_window' });
         // Refresh window list to show new window
         setTimeout(() => send({ type: 'list_windows' }), 100);
         return true;
@@ -1577,14 +1577,14 @@ function handlePanesKeydown(e) {
     // \ or | for Horizontal split (execute directly)
     if (e.key === '\\' || e.key === '|') {
         e.preventDefault();
-        sendTmuxKey('%');
+        send({ type: 'split_horizontal' });
         return true;
     }
 
     // - or _ for Vertical split (execute directly)
     if (e.key === '-' || e.key === '_') {
         e.preventDefault();
-        sendTmuxKey('"');
+        send({ type: 'split_vertical' });
         return true;
     }
 
@@ -1879,48 +1879,37 @@ document.getElementById('disconnect-btn').addEventListener('click', () => {
         navOverlay.classList.remove('active');
     }
 });
-
-// tmux controls - send Ctrl+b prefix + key
-function sendTmuxKey(key) {
-    if (sessionActive) {
-        // Send Ctrl+b (prefix)
-        send({ type: 'input', data: btoa('\x02') });
-        // Then send the key
-        setTimeout(() => {
-            send({ type: 'input', data: btoa(key) });
-        }, 50);
-
-        // Close controls dialog after action
-        controlsDialog.classList.remove('active');
-        controlsOverlay.classList.remove('active');
-
-        // Focus terminal
-        term.focus();
-    }
-}
-
 document.getElementById('split-h').addEventListener('click', () => {
-    sendTmuxKey('%');
+    send({ type: 'split_horizontal' });
+    controlsDialog.classList.remove('active');
+    controlsOverlay.classList.remove('active');
+    term.focus();
 });
 
 document.getElementById('split-v').addEventListener('click', () => {
-    sendTmuxKey('"');
+    send({ type: 'split_vertical' });
+    controlsDialog.classList.remove('active');
+    controlsOverlay.classList.remove('active');
+    term.focus();
 });
 
 document.getElementById('new-window').addEventListener('click', () => {
-    sendTmuxKey('c');
+    send({ type: 'new_window' });
 });
 
 document.getElementById('next-window').addEventListener('click', () => {
-    sendTmuxKey('n');
+    send({ type: 'next_window' });
 });
 
 document.getElementById('prev-window').addEventListener('click', () => {
-    sendTmuxKey('p');
+    send({ type: 'prev_window' });
 });
 
 document.getElementById('close-window').addEventListener('click', () => {
-    sendTmuxKey('&');
+    if (filteredWindows.length > 0 && selectedWindowIndex >= 0 && selectedWindowIndex < filteredWindows.length) {
+        const windowIndex = filteredWindows[selectedWindowIndex].index;
+        send({ type: 'kill_window', index: windowIndex });
+    }
 });
 
 document.getElementById('rename-window').addEventListener('click', () => {
@@ -1949,11 +1938,17 @@ document.getElementById('rename-window').addEventListener('click', () => {
 });
 
 document.getElementById('close-pane').addEventListener('click', () => {
-    sendTmuxKey('x');
+    send({ type: 'kill_pane' });
+    controlsDialog.classList.remove('active');
+    controlsOverlay.classList.remove('active');
+    term.focus();
 });
 
 document.getElementById('zoom-pane').addEventListener('click', () => {
-    sendTmuxKey('z');
+    send({ type: 'zoom_pane' });
+    controlsDialog.classList.remove('active');
+    controlsOverlay.classList.remove('active');
+    term.focus();
 });
 
 // Rename window dialog handlers
@@ -1980,24 +1975,16 @@ renameWindowSubmit.addEventListener('click', () => {
     renameWindowDialog.classList.remove('active');
     renameWindowOverlay.classList.remove('active');
 
-    if (newName && sessionActive) {
-        // Send tmux rename command: Ctrl+b, comma, new-name, Enter
-        send({ type: 'input', data: btoa('\x02') }); // Ctrl+b (prefix)
-        setTimeout(() => {
-            send({ type: 'input', data: btoa(',') }); // comma (rename command)
-            setTimeout(() => {
-                // Clear existing name and type new one
-                send({ type: 'input', data: btoa('\x15') }); // Ctrl+U to clear line
-                setTimeout(() => {
-                    send({ type: 'input', data: btoa(newName) }); // new name
-                    setTimeout(() => {
-                        send({ type: 'input', data: btoa('\r') }); // Enter (carriage return)
-                        // Refocus terminal after command completes
-                        setTimeout(() => term.focus(), 100);
-                    }, 50);
-                }, 50);
-            }, 50);
-        }, 50);
+    if (newName && sessionActive && filteredWindows.length > 0 && selectedWindowIndex >= 0 && selectedWindowIndex < filteredWindows.length) {
+        const windowIndex = filteredWindows[selectedWindowIndex].index;
+        // Send backend rename command
+        send({
+            type: 'rename_window',
+            index: windowIndex,
+            data: newName
+        });
+        // Refresh window list to see the new name
+        setTimeout(() => send({ type: 'list_windows' }), 100);
     }
 
     // Refocus terminal

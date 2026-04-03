@@ -243,6 +243,51 @@ func (ts *TmuxSession) selectWindow(index int) error {
 	return cmd.Run()
 }
 
+func (ts *TmuxSession) renameWindow(index int, name string) error {
+	cmd := exec.Command("tmux", "rename-window", "-t", fmt.Sprintf("%s:%d", ts.sessionID, index), name)
+	return cmd.Run()
+}
+
+func (ts *TmuxSession) newWindow() error {
+	cmd := exec.Command("tmux", "new-window", "-t", ts.sessionID)
+	return cmd.Run()
+}
+
+func (ts *TmuxSession) nextWindow() error {
+	cmd := exec.Command("tmux", "next-window", "-t", ts.sessionID)
+	return cmd.Run()
+}
+
+func (ts *TmuxSession) prevWindow() error {
+	cmd := exec.Command("tmux", "previous-window", "-t", ts.sessionID)
+	return cmd.Run()
+}
+
+func (ts *TmuxSession) killWindow(index int) error {
+	cmd := exec.Command("tmux", "kill-window", "-t", fmt.Sprintf("%s:%d", ts.sessionID, index))
+	return cmd.Run()
+}
+
+func (ts *TmuxSession) splitHorizontal() error {
+	cmd := exec.Command("tmux", "split-window", "-h", "-t", ts.sessionID)
+	return cmd.Run()
+}
+
+func (ts *TmuxSession) splitVertical() error {
+	cmd := exec.Command("tmux", "split-window", "-v", "-t", ts.sessionID)
+	return cmd.Run()
+}
+
+func (ts *TmuxSession) killPane() error {
+	cmd := exec.Command("tmux", "kill-pane", "-t", ts.sessionID)
+	return cmd.Run()
+}
+
+func (ts *TmuxSession) zoomPane() error {
+	cmd := exec.Command("tmux", "resize-pane", "-Z", "-t", ts.sessionID)
+	return cmd.Run()
+}
+
 func listTmuxSessions() ([]string, error) {
 	cmd := exec.Command("tmux", "list-sessions", "-F", "#{session_name}")
 	output, err := cmd.Output()
@@ -786,6 +831,78 @@ func makeWebSocketHandler(defaultSession string) http.HandlerFunc {
 			if session != nil {
 				if err := session.selectWindow(msg.Index); err != nil {
 					log.Println("Select window error:", err)
+					safeWriteJSON(Message{Type: "error", Data: err.Error()})
+				}
+			}
+
+		case "rename_window":
+			if session != nil {
+				if err := session.renameWindow(msg.Index, msg.Data); err != nil {
+					log.Println("Rename window error:", err)
+					safeWriteJSON(Message{Type: "error", Data: err.Error()})
+				}
+			}
+
+		case "new_window":
+			if session != nil {
+				if err := session.newWindow(); err != nil {
+					log.Println("New window error:", err)
+					safeWriteJSON(Message{Type: "error", Data: err.Error()})
+				}
+			}
+
+		case "next_window":
+			if session != nil {
+				if err := session.nextWindow(); err != nil {
+					log.Println("Next window error:", err)
+					safeWriteJSON(Message{Type: "error", Data: err.Error()})
+				}
+			}
+
+		case "prev_window":
+			if session != nil {
+				if err := session.prevWindow(); err != nil {
+					log.Println("Previous window error:", err)
+					safeWriteJSON(Message{Type: "error", Data: err.Error()})
+				}
+			}
+
+		case "kill_window":
+			if session != nil {
+				if err := session.killWindow(msg.Index); err != nil {
+					log.Println("Kill window error:", err)
+					safeWriteJSON(Message{Type: "error", Data: err.Error()})
+				}
+			}
+
+		case "split_horizontal":
+			if session != nil {
+				if err := session.splitHorizontal(); err != nil {
+					log.Println("Split horizontal error:", err)
+					safeWriteJSON(Message{Type: "error", Data: err.Error()})
+				}
+			}
+
+		case "split_vertical":
+			if session != nil {
+				if err := session.splitVertical(); err != nil {
+					log.Println("Split vertical error:", err)
+					safeWriteJSON(Message{Type: "error", Data: err.Error()})
+				}
+			}
+
+		case "kill_pane":
+			if session != nil {
+				if err := session.killPane(); err != nil {
+					log.Println("Kill pane error:", err)
+					safeWriteJSON(Message{Type: "error", Data: err.Error()})
+				}
+			}
+
+		case "zoom_pane":
+			if session != nil {
+				if err := session.zoomPane(); err != nil {
+					log.Println("Zoom pane error:", err)
 					safeWriteJSON(Message{Type: "error", Data: err.Error()})
 				}
 			}
