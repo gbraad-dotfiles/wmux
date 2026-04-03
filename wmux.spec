@@ -34,9 +34,9 @@ cp -r public/* %{buildroot}%{_datadir}/wmux/public/
 install -D -m 0644 wmux@.service %{buildroot}%{_unitdir}/wmux@.service
 install -D -m 0644 wmux-multi@.service %{buildroot}%{_unitdir}/wmux-multi@.service
 
-# Create symlink for service to find assets
+# Create relative symlink for service to find assets
 mkdir -p %{buildroot}%{_bindir}/public
-ln -s %{_datadir}/wmux/public %{buildroot}%{_bindir}/public
+ln -s ../../share/wmux/public %{buildroot}%{_bindir}/public/public
 
 %post
 %systemd_post wmux@.service
@@ -60,7 +60,7 @@ ln -s %{_datadir}/wmux/public %{buildroot}%{_bindir}/public
 %{_unitdir}/wmux-multi@.service
 
 %changelog
-* Wed Apr 02 2026 Gerard Braad <me@gbraad.nl> - 1.0.0-1
+* Thu Apr 02 2026 Gerard Braad <me@gbraad.nl> - 1.0.0-1
 - Initial RPM release
 - Single-host and multi-host modes
 - Tailscale security by default
