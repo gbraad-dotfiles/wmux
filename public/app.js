@@ -134,78 +134,100 @@ function setupEventListeners() {
 
     // Desktop keyboard shortcuts - use capture phase to intercept before terminal
     window.addEventListener('keydown', async (e) => {
-        // Check if hosts dialog is handling this event (from spa-router.js)
-        if (typeof window.handleHostsKeydown === 'function' && window.handleHostsKeydown(e)) {
-            e.stopPropagation();
-            return;
-        }
-
-        // Check if apps dialog is handling this event
-        if (handleAppsKeydown(e)) {
-            e.stopPropagation();
-            return;
-        }
-
-        // Check if windows dialog is handling this event
-        if (handleWindowsKeydown(e)) {
-            e.stopPropagation();
-            return;
-        }
-
-        // Check if sessions dialog is handling this event
-        if (handleSessionsKeydown(e)) {
-            e.stopPropagation();
-            return;
-        }
-
-        // Check if panes dialog is handling this event
-        if (handlePanesKeydown(e)) {
-            e.stopPropagation();
-            return;
-        }
-
-        // ESC closes any open dialog
-        if (e.key === 'Escape') {
-            const activeDialogs = [
-                { dialog: 'hosts-dialog', overlay: 'hosts-overlay' },
-                { dialog: 'apps-dialog', overlay: 'apps-overlay' },
-                { dialog: 'sessions-dialog', overlay: 'sessions-overlay' },
-                { dialog: 'windows-dialog', overlay: 'windows-overlay' },
-                { dialog: 'controls-dialog', overlay: 'controls-overlay' },
-                { dialog: 'confirm-kill-dialog', overlay: 'confirm-kill-overlay' },
-                { dialog: 'add-host-dialog', overlay: 'add-host-overlay' },
-                { dialog: 'rename-window-dialog', overlay: 'rename-window-overlay' }
-            ];
-
-            let closedAny = false;
-            activeDialogs.forEach(({ dialog, overlay }) => {
-                const dialogEl = document.getElementById(dialog);
-                const overlayEl = document.getElementById(overlay);
-                if (dialogEl && dialogEl.classList.contains('active')) {
-                    dialogEl.classList.remove('active');
-                    if (overlayEl) overlayEl.classList.remove('active');
-                    closedAny = true;
-                }
-            });
-
-            // Close menu if open
-            const navMenu = document.getElementById('nav-menu');
-            const navOverlay = document.getElementById('nav-overlay');
-            if (navMenu && navMenu.classList.contains('active')) {
-                navMenu.classList.remove('active');
-                if (navOverlay) navOverlay.classList.remove('active');
-                closedAny = true;
-            }
-
-            if (closedAny) {
-                e.preventDefault();
-                return;
-            }
-        }
-
-        // Don't intercept shortcuts if user is typing in an input field (but allow terminal textarea)
+        // Don't intercept shortcuts if user is typing in an input field (but allow terminal)
         const isTyping = (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') &&
                          !e.target.closest('#terminal-container');
+
+        // Check if any dialog is currently active
+        const hasActiveDialog =
+            (document.getElementById('hosts-dialog')?.classList.contains('active')) ||
+            (document.getElementById('apps-dialog')?.classList.contains('active')) ||
+            (document.getElementById('windows-dialog')?.classList.contains('active')) ||
+            (document.getElementById('sessions-dialog')?.classList.contains('active')) ||
+            (document.getElementById('controls-dialog')?.classList.contains('active')) ||
+            (document.getElementById('confirm-kill-dialog')?.classList.contains('active')) ||
+            (document.getElementById('add-host-dialog')?.classList.contains('active')) ||
+            (document.getElementById('rename-window-dialog')?.classList.contains('active')) ||
+            (document.getElementById('nav-menu')?.classList.contains('active'));
+
+        // If a dialog is active, let dialog handlers process the event
+        if (hasActiveDialog) {
+            // Check if hosts dialog is handling this event (from spa-router.js)
+            if (typeof window.handleHostsKeydown === 'function' && window.handleHostsKeydown(e)) {
+                e.preventDefault();
+                e.stopPropagation();
+                return;
+            }
+
+            // Check if apps dialog is handling this event
+            if (handleAppsKeydown(e)) {
+                e.preventDefault();
+                e.stopPropagation();
+                return;
+            }
+
+            // Check if windows dialog is handling this event
+            if (handleWindowsKeydown(e)) {
+                e.preventDefault();
+                e.stopPropagation();
+                return;
+            }
+
+            // Check if sessions dialog is handling this event
+            if (handleSessionsKeydown(e)) {
+                e.preventDefault();
+                e.stopPropagation();
+                return;
+            }
+
+            // Check if panes dialog is handling this event
+            if (handlePanesKeydown(e)) {
+                e.preventDefault();
+                e.stopPropagation();
+                return;
+            }
+
+            // ESC closes any open dialog
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                e.stopPropagation();
+
+                const activeDialogs = [
+                    { dialog: 'hosts-dialog', overlay: 'hosts-overlay' },
+                    { dialog: 'apps-dialog', overlay: 'apps-overlay' },
+                    { dialog: 'sessions-dialog', overlay: 'sessions-overlay' },
+                    { dialog: 'windows-dialog', overlay: 'windows-overlay' },
+                    { dialog: 'controls-dialog', overlay: 'controls-overlay' },
+                    { dialog: 'confirm-kill-dialog', overlay: 'confirm-kill-overlay' },
+                    { dialog: 'add-host-dialog', overlay: 'add-host-overlay' },
+                    { dialog: 'rename-window-dialog', overlay: 'rename-window-overlay' }
+                ];
+
+                activeDialogs.forEach(({ dialog, overlay }) => {
+                    const dialogEl = document.getElementById(dialog);
+                    const overlayEl = document.getElementById(overlay);
+                    if (dialogEl && dialogEl.classList.contains('active')) {
+                        dialogEl.classList.remove('active');
+                        if (overlayEl) overlayEl.classList.remove('active');
+                    }
+                });
+
+                // Close menu if open
+                const navMenu = document.getElementById('nav-menu');
+                const navOverlay = document.getElementById('nav-overlay');
+                if (navMenu && navMenu.classList.contains('active')) {
+                    navMenu.classList.remove('active');
+                    if (navOverlay) navOverlay.classList.remove('active');
+                }
+                return;
+            }
+
+            // For all other keys when dialog is active, let the dialog handler process it
+            // Don't interfere with terminal
+            return;
+        }
+
+        // No dialogs active - only intercept specific shortcuts
 
         // Prefix key: Ctrl+Space
         if (e.ctrlKey && e.key === ' ' && !e.shiftKey && !e.metaKey && !isTyping) {
@@ -224,7 +246,7 @@ function setupEventListeners() {
                 prefixKeyTimeout = null;
             }, PREFIX_KEY_TIMEOUT);
 
-            console.log('Prefix key pressed - waiting for command key (A/W/P/S)');
+            console.log('Prefix key pressed - waiting for command key (H/A/W/P/S)');
             return;
         }
 
@@ -313,22 +335,33 @@ function setupEventListeners() {
                 }
                 return;
             }
+
+            // If we got here, prefix was pressed but followed by an unrecognized key
+            // Let it pass through to terminal
+            return;
         }
+
+        // Clipboard shortcuts - only intercept these specific combinations
         // Ctrl+Shift+V or Cmd+Shift+V for paste
-        if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'V') {
+        if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'V' && !isTyping) {
             e.preventDefault();
+            e.stopPropagation();
             console.log('Ctrl+Shift+V detected');
             await pasteFromClipboard();
+            return;
         }
         // Shift+Insert for paste (traditional terminal shortcut)
-        if (e.shiftKey && e.key === 'Insert') {
+        if (e.shiftKey && e.key === 'Insert' && !e.ctrlKey && !e.metaKey && !isTyping) {
             e.preventDefault();
+            e.stopPropagation();
             console.log('Shift+Insert detected');
             await pasteFromClipboard();
+            return;
         }
         // Ctrl+Insert for copy (traditional terminal shortcut)
-        if (e.ctrlKey && e.key === 'Insert') {
+        if (e.ctrlKey && e.key === 'Insert' && !e.shiftKey && !e.metaKey && !isTyping) {
             e.preventDefault();
+            e.stopPropagation();
             const selection = term.getSelection();
             if (selection) {
                 try {
@@ -338,7 +371,11 @@ function setupEventListeners() {
                     console.error('Copy failed:', err);
                 }
             }
+            return;
         }
+
+        // For all other keys, let them pass through to the terminal without interference
+        // Don't call preventDefault, don't call stopPropagation - just return
     }, true); // Use capture phase to intercept before terminal
 
     // Handle terminal input
@@ -1090,29 +1127,6 @@ function connect(remoteHost) {
         sessionActive = false;
         connected = false;
         ws = null;
-
-        // If WSS connection failed immediately (likely certificate issue)
-        if (wsUrl.startsWith('wss://') && reconnectAttempts === 0 && !event.wasClean) {
-            const hostUrl = wsUrl.replace('wss://', 'https://').replace('/ws', '');
-
-            term.write('\r\n\x1b[31mSecure WebSocket connection failed!\x1b[0m\r\n');
-            term.write('\x1b[33mOpening certificate acceptance page...\x1b[0m\r\n\r\n');
-
-            // Auto-open the HTTPS URL in a new window
-            const certWindow = window.open(hostUrl, '_blank');
-
-            if (certWindow) {
-                term.write('\x1b[36mSteps:\x1b[0m\r\n');
-                term.write('\x1b[36m1. Accept the certificate in the new tab\x1b[0m\r\n');
-                term.write('\x1b[36m2. Return here and reconnect\x1b[0m\r\n\r\n');
-            } else {
-                term.write(`\x1b[36mPlease open: ${hostUrl}\x1b[0m\r\n`);
-                term.write('\x1b[36mAccept the certificate, then reconnect\x1b[0m\r\n\r\n');
-            }
-
-            // Don't auto-reconnect for certificate issues
-            return;
-        }
 
         // If first connection failed and no ?host param, likely remote hosting
         const urlParams = new URLSearchParams(window.location.search);
