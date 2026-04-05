@@ -147,38 +147,30 @@ async function route() {
 }
 
 function showView(viewName) {
-    const hostSelectorView = document.getElementById('view-host-selector');
     const terminalView = document.getElementById('view-terminal');
 
-    if (viewName === 'host-selector') {
-        hostSelectorView.style.display = 'flex';
-        terminalView.style.display = 'none';
-        currentView = 'host-selector';
-        initHostSelector();
-    } else {
-        hostSelectorView.style.display = 'none';
-        terminalView.style.display = 'flex';
-        currentView = 'terminal';
+    // Always show terminal view (host selector view has been removed)
+    terminalView.style.display = 'flex';
+    currentView = 'terminal';
 
-        // Show hosts button in multi-host mode
-        const hostsBtn = document.getElementById('hosts-btn');
-        if (hostsBtn && appConfig && appConfig.multiHost) {
-            hostsBtn.style.display = 'block';
-        }
-
-        // Initialize hosts dialog event listeners
-        initHostSelector();
-
-        // Force layout recalculation
-        terminalView.offsetHeight;
-
-        // Wait for layout to fully settle before initializing terminal
-        requestAnimationFrame(() => {
-            requestAnimationFrame(() => {
-                initTerminalView();
-            });
-        });
+    // Show hosts button in multi-host mode
+    const hostsBtn = document.getElementById('hosts-btn');
+    if (hostsBtn && appConfig && appConfig.multiHost) {
+        hostsBtn.style.display = 'block';
     }
+
+    // Initialize hosts dialog event listeners
+    initHostSelector();
+
+    // Force layout recalculation
+    terminalView.offsetHeight;
+
+    // Wait for layout to fully settle before initializing terminal
+    requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+            initTerminalView();
+        });
+    });
 }
 
 // Make showView globally available for app.js
@@ -254,41 +246,38 @@ window.handleHostsKeydown = handleHostsKeydown;
 let hostSelectorInitialized = false;
 
 async function initHostSelector() {
-    await loadSavedHosts();
-    if (appConfig && appConfig.exposeHosts) {
-        discoverHosts();
-    }
-
     // Only attach event listeners once
     if (hostSelectorInitialized) return;
     hostSelectorInitialized = true;
 
     // Add host dialog event listeners
-    const showAddHost = document.getElementById('show-add-host-dialog');
+    const showAddHostDialog = document.getElementById('show-add-host-dialog');
     const closeAddHost = document.getElementById('close-add-host');
     const addHostDialog = document.getElementById('add-host-dialog');
     const addHostOverlay = document.getElementById('add-host-overlay');
 
-    if (showAddHost) {
-        showAddHost.addEventListener('click', () => {
-            // Close hosts dialog
-            const hostsDialog = document.getElementById('hosts-dialog');
-            const hostsOverlay = document.getElementById('hosts-overlay');
-            if (hostsDialog && hostsOverlay) {
-                hostsDialog.classList.remove('active');
-                hostsOverlay.classList.remove('active');
-            }
+    const openAddHostDialog = () => {
+        // Close hosts dialog if open
+        const hostsDialog = document.getElementById('hosts-dialog');
+        const hostsOverlay = document.getElementById('hosts-overlay');
+        if (hostsDialog && hostsOverlay) {
+            hostsDialog.classList.remove('active');
+            hostsOverlay.classList.remove('active');
+        }
 
-            // Open add host dialog
-            addHostDialog.classList.add('active');
-            addHostOverlay.classList.add('active');
+        // Open add host dialog
+        addHostDialog.classList.add('active');
+        addHostOverlay.classList.add('active');
 
-            // Focus name input
-            setTimeout(() => {
-                const nameInput = document.getElementById('host-name-input');
-                if (nameInput) nameInput.focus();
-            }, 100);
-        });
+        // Focus name input
+        setTimeout(() => {
+            const nameInput = document.getElementById('host-name-input');
+            if (nameInput) nameInput.focus();
+        }, 100);
+    };
+
+    if (showAddHostDialog) {
+        showAddHostDialog.addEventListener('click', openAddHostDialog);
     }
 
     if (closeAddHost) {
@@ -310,6 +299,18 @@ async function initHostSelector() {
     const addHostSubmit = document.getElementById('add-host-submit');
     if (addHostSubmit) {
         addHostSubmit.addEventListener('click', addHost);
+    }
+
+    const testCertBtn = document.getElementById('test-cert-btn');
+    if (testCertBtn) {
+        testCertBtn.addEventListener('click', () => {
+            const url = document.getElementById('host-url-input').value.trim();
+            if (!url) {
+                alert('Please enter a URL first');
+                return;
+            }
+            window.open(url, '_blank');
+        });
     }
 
     // Handle Enter key in input fields
@@ -378,110 +379,7 @@ async function initHostSelector() {
     }
 }
 
-async function loadSavedHosts() {
-    const hosts = JSON.parse(localStorage.getItem('wmux_hosts') || '[]');
-    const container = document.getElementById('saved-hosts');
-
-    // Get current server URL (this server)
-    const currentServer = `${window.location.protocol}//${window.location.host}`;
-    const autoConnectHost = localStorage.getItem('wmux_auto_connect_host');
-
-    // Sync autoConnect property on hosts based on wmux_auto_connect_host
-    hosts.forEach(host => {
-        host.autoConnect = (autoConnectHost === host.url);
-    });
-
-    // Check if current server has backend
-    let hasBackend = false;
-    try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 1000); // 1 second timeout
-        const response = await fetch('/api/config', {
-            method: 'HEAD',
-            signal: controller.signal
-        });
-        clearTimeout(timeoutId);
-        hasBackend = response.ok;
-    } catch (err) {
-        hasBackend = false;
-    }
-
-    console.log('Backend detection:', hasBackend);
-
-    let html = '';
-
-    // Only add "This Server" if backend exists
-    if (hasBackend) {
-        const localAutoConnect = autoConnectHost === currentServer;
-        html += `
-            <div class="host-item" style="border-color: #0066FF; ${localAutoConnect ? 'background: #1a1a2a;' : ''}">
-                <div class="host-info">
-                    <div class="host-name">
-                        This Server
-                        <span style="color: #0066FF; font-size: 0.8em; margin-left: 10px;">[LOCAL]</span>
-                        ${localAutoConnect ? '<span style="color: var(--accent); font-size: 0.8em; margin-left: 10px;">[AUTO]</span>' : ''}
-                    </div>
-                    <div class="host-url">${currentServer}</div>
-                </div>
-                <div style="display: flex; gap: 8px;">
-                    <button onclick="toggleAutoConnect('${escapeHtml(currentServer)}')" style="background: ${localAutoConnect ? 'var(--accent)' : 'var(--bg-tertiary)'}; color: white; border: 1px solid ${localAutoConnect ? 'var(--accent)' : 'var(--border)'}; padding: 8px 12px; border-radius: 4px; cursor: pointer; font-size: 0.75em; text-transform: uppercase;">Auto</button>
-                    <button onclick="connectToHost('${escapeHtml(currentServer)}')" style="background: var(--accent); color: white; border: 1px solid var(--accent); padding: 8px 16px; border-radius: 4px; cursor: pointer; font-size: 0.85em; text-transform: uppercase;">Connect</button>
-                </div>
-            </div>
-        `;
-    }
-
-    // Add saved hosts
-    if (hosts.length > 0) {
-        html += hosts.map((host, idx) => {
-            const isAutoConnect = host.autoConnect || false;
-            return `
-                <div class="host-item" style="${isAutoConnect ? 'background: #1a1a2a;' : ''}">
-                    <div class="host-info">
-                        <div class="host-name">
-                            ${escapeHtml(host.name)}
-                            ${isAutoConnect ? '<span style="color: var(--accent); font-size: 0.8em; margin-left: 10px;">[AUTO]</span>' : ''}
-                        </div>
-                        <div class="host-url">${escapeHtml(host.url)}</div>
-                    </div>
-                    <div style="display: flex; gap: 8px;">
-                        <button onclick="toggleHostAutoConnect(${idx})" style="background: ${isAutoConnect ? 'var(--accent)' : 'var(--bg-tertiary)'}; color: white; border: 1px solid ${isAutoConnect ? 'var(--accent)' : 'var(--border)'}; padding: 8px 12px; border-radius: 4px; cursor: pointer; font-size: 0.75em; text-transform: uppercase;">Auto</button>
-                        <button onclick="removeHost(${idx})" style="background: var(--bg-tertiary); color: white; border: 1px solid var(--border); padding: 8px 12px; border-radius: 4px; cursor: pointer; font-size: 0.75em; text-transform: uppercase;">Remove</button>
-                        <button onclick="connectToHost('${escapeHtml(host.url)}')" style="background: var(--accent); color: white; border: 1px solid var(--accent); padding: 8px 16px; border-radius: 4px; cursor: pointer; font-size: 0.85em; text-transform: uppercase;">Connect</button>
-                    </div>
-                </div>
-            `;
-        }).join('');
-    }
-
-    container.innerHTML = html;
-}
-
-async function discoverHosts() {
-    try {
-        const response = await fetch('/api/discover');
-        const hosts = await response.json();
-
-        const container = document.getElementById('discovered-hosts');
-        if (!hosts || hosts.length === 0) {
-            container.innerHTML = '';
-            return;
-        }
-
-        container.innerHTML = '<h3 style="margin-bottom: 10px;">Discovered Hosts</h3>' +
-            hosts.map(host => `
-                <div class="host-item">
-                    <div class="host-info">
-                        <div class="host-name">${escapeHtml(host.Name)}</div>
-                        <div class="host-url">${escapeHtml(host.URL)}</div>
-                    </div>
-                    <button onclick="connectToHost('${escapeHtml(host.URL)}')" style="background: var(--accent); color: white; border: 1px solid var(--accent); padding: 8px 16px; border-radius: 4px; cursor: pointer; font-size: 0.85em; text-transform: uppercase;">Connect</button>
-                </div>
-            `).join('');
-    } catch (err) {
-        console.error('Discovery failed:', err);
-    }
-}
+// loadSavedHosts() and discoverHosts() removed - they were for the old host selector view
 
 async function addHost() {
     const name = document.getElementById('host-name-input').value.trim();
@@ -492,27 +390,88 @@ async function addHost() {
         return;
     }
 
-    const hosts = JSON.parse(localStorage.getItem('wmux_hosts') || '[]');
-    hosts.push({ name, url });
-    localStorage.setItem('wmux_hosts', JSON.stringify(hosts));
-
-    document.getElementById('host-name-input').value = '';
-    document.getElementById('host-url-input').value = '';
-
     // Close add dialog
     document.getElementById('add-host-dialog').classList.remove('active');
     document.getElementById('add-host-overlay').classList.remove('active');
 
-    // Reload the hosts dialog to show the new host
-    await loadHostsDialog();
+    // Check if running in Capacitor
+    const isCapacitor = window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform();
 
-    // Reopen hosts dialog
-    const hostsDialog = document.getElementById('hosts-dialog');
-    const hostsOverlay = document.getElementById('hosts-overlay');
-    if (hostsDialog && hostsOverlay) {
-        hostsDialog.classList.add('active');
-        hostsOverlay.classList.add('active');
+    const SelfSignedBrowser = window.Capacitor?.Plugins?.SelfSignedBrowser;
+
+    if (!isCapacitor) {
+        // Non-Capacitor (web browser): add directly
+        const hosts = JSON.parse(localStorage.getItem('wmux_hosts') || '[]');
+        hosts.push({ name, url, autoConnect: false });
+        localStorage.setItem('wmux_hosts', JSON.stringify(hosts));
+
+        // Clear inputs
+        document.getElementById('host-name-input').value = '';
+        document.getElementById('host-url-input').value = '';
+
+        // Reload the hosts dialog
+        await loadHostsDialog();
+
+        // Reopen hosts dialog
+        const hostsDialog = document.getElementById('hosts-dialog');
+        const hostsOverlay = document.getElementById('hosts-overlay');
+        if (hostsDialog && hostsOverlay) {
+            hostsDialog.classList.add('active');
+            hostsOverlay.classList.add('active');
+        }
+        return;
     }
+
+    // Capacitor: require SelfSignedBrowser plugin for certificate handling
+    if (!SelfSignedBrowser) {
+        alert('Certificate handling plugin not available');
+        document.getElementById('add-host-dialog').classList.add('active');
+        document.getElementById('add-host-overlay').classList.add('active');
+        return;
+    }
+
+    // Store host info temporarily - will only add if browser successfully opens/closes
+    sessionStorage.setItem('wmux_pending_host_name', name);
+    sessionStorage.setItem('wmux_pending_host_url', url);
+
+    // Set up close listener BEFORE opening
+    await SelfSignedBrowser.addListener('browserClosed', async () => {
+        console.log('Browser closed');
+
+        // Get stored values
+        const storedName = sessionStorage.getItem('wmux_pending_host_name');
+        const storedUrl = sessionStorage.getItem('wmux_pending_host_url');
+
+        if (storedName && storedUrl) {
+            // Add the host
+            const hosts = JSON.parse(localStorage.getItem('wmux_hosts') || '[]');
+            hosts.push({ name: storedName, url: storedUrl, autoConnect: false });
+            localStorage.setItem('wmux_hosts', JSON.stringify(hosts));
+
+            // Clear temporary storage
+            sessionStorage.removeItem('wmux_pending_host_name');
+            sessionStorage.removeItem('wmux_pending_host_url');
+
+            // Clear inputs
+            document.getElementById('host-name-input').value = '';
+            document.getElementById('host-url-input').value = '';
+
+            // Reload and reopen hosts dialog
+            await loadHostsDialog();
+            const hostsDialog = document.getElementById('hosts-dialog');
+            const hostsOverlay = document.getElementById('hosts-overlay');
+            if (hostsDialog && hostsOverlay) {
+                hostsDialog.classList.add('active');
+                hostsOverlay.classList.add('active');
+            }
+        }
+    });
+
+    // Open browser to test connection and accept certificate
+    console.log('Opening SelfSignedBrowser for:', url);
+    await SelfSignedBrowser.open({
+        url: `${url}/connect.html`
+    });
 }
 
 function renderHosts(hosts) {
@@ -544,12 +503,11 @@ function renderHosts(hosts) {
                     <div style="font-weight: 500; color: var(--text-primary);">
                         ${highlightedName}
                         ${host.isLocal ? '<span style="color: #0066FF; font-size: 0.8em; margin-left: 10px;">[LOCAL]</span>' : ''}
-                        ${isAutoConnect ? '<span style="color: #0066FF; font-size: 0.8em; margin-left: 10px;">[AUTO]</span>' : ''}
                     </div>
                     <div style="font-size: 0.75em; color: var(--text-secondary); margin-top: 2px;">${highlightedUrl}</div>
                 </div>
                 <button class="host-auto-btn" data-index="${idx}" data-is-local="${host.isLocal}" style="background: ${isAutoConnect ? 'var(--accent)' : 'var(--bg-tertiary)'}; color: white; border: 1px solid ${isAutoConnect ? 'var(--accent)' : 'var(--border)'}; padding: 4px 8px; border-radius: 4px; cursor: pointer; font-size: 0.75em; margin-right: 8px;">Auto</button>
-                ${!host.isLocal ? `<button class="host-remove-btn" data-index="${idx}" style="background: var(--bg-tertiary); color: white; border: 1px solid var(--border); padding: 4px 8px; border-radius: 4px; cursor: pointer; font-size: 0.75em;">Remove</button>` : ''}
+                ${!host.isLocal ? `<button class="host-remove-btn" data-index="${idx}" style="background: var(--bg-tertiary); color: white; border: 1px solid var(--border); padding: 4px 8px; border-radius: 4px; cursor: pointer; font-size: 0.75em; margin-right: 8px;">Remove</button>` : ''}
             </div>
         `;
     }).join('');
@@ -557,7 +515,8 @@ function renderHosts(hosts) {
     // Add click handlers for hosts
     listEl.querySelectorAll('.host-item-dialog').forEach(item => {
         item.addEventListener('click', (e) => {
-            if (e.target.classList.contains('host-auto-btn') || e.target.classList.contains('host-remove-btn')) {
+            if (e.target.classList.contains('host-auto-btn') ||
+                e.target.classList.contains('host-remove-btn')) {
                 return;
             }
             const url = item.dataset.url;
@@ -631,20 +590,28 @@ async function loadHostsDialog() {
     const savedHosts = JSON.parse(localStorage.getItem('wmux_hosts') || '[]');
     const autoConnectHost = localStorage.getItem('wmux_auto_connect_host');
 
-    // Check if current server has backend
+    // Detect if running in Capacitor (file:// or capacitor:// or http://localhost means Capacitor app)
+    const isCapacitor = window.location.protocol === 'file:' ||
+                        window.location.protocol === 'capacitor:' ||
+                        window.location.hostname === 'localhost';
+
+    // Check if current server has backend (only when NOT in Capacitor)
     let hasBackend = false;
-    try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 1000);
-        const response = await fetch('/api/config', {
-            method: 'HEAD',
-            signal: controller.signal
-        });
-        clearTimeout(timeoutId);
-        hasBackend = response.ok;
-    } catch (err) {
-        hasBackend = false;
+    if (!isCapacitor) {
+        try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 1000);
+            const response = await fetch('/api/config', {
+                method: 'HEAD',
+                signal: controller.signal
+            });
+            clearTimeout(timeoutId);
+            hasBackend = response.ok;
+        } catch (err) {
+            hasBackend = false;
+        }
     }
+    // In Capacitor, hasBackend is always false - no need to check
 
     // Sync autoConnect property on saved hosts
     const syncedSavedHosts = savedHosts.map(h => ({
@@ -653,8 +620,8 @@ async function loadHostsDialog() {
         autoConnect: autoConnectHost === h.url
     }));
 
-    // Only include "This Server" if backend exists
-    hostsCache = hasBackend ? [
+    // Only include "This Server" if backend exists and NOT running in Capacitor
+    hostsCache = (hasBackend && !isCapacitor) ? [
         {
             name: 'This Server',
             url: currentServer,
@@ -670,7 +637,9 @@ async function loadHostsDialog() {
 }
 
 function toggleHostAutoConnectByIndex(idx) {
-    const realIdx = idx - 1; // Subtract 1 because "This Server" is first
+    // Check if "This Server" is in the list (it's first if present and has isLocal=true)
+    const hasLocalServer = hostsCache.length > 0 && hostsCache[0].isLocal === true;
+    const realIdx = hasLocalServer ? idx - 1 : idx;
     const savedHosts = JSON.parse(localStorage.getItem('wmux_hosts') || '[]');
 
     if (realIdx >= 0 && realIdx < savedHosts.length) {
@@ -685,47 +654,7 @@ function toggleHostAutoConnectByIndex(idx) {
     loadHostsDialog();
 }
 
-function toggleHostAutoConnect(idx) {
-    // For saved hosts in host selector (not dialog)
-    const savedHosts = JSON.parse(localStorage.getItem('wmux_hosts') || '[]');
-
-    if (idx >= 0 && idx < savedHosts.length) {
-        const isCurrentlyAuto = savedHosts[idx].autoConnect || false;
-
-        if (isCurrentlyAuto) {
-            // Turn off auto-connect
-            savedHosts[idx].autoConnect = false;
-            localStorage.removeItem('wmux_auto_connect_host');
-        } else {
-            // Turn on auto-connect for this host
-            savedHosts.forEach(h => h.autoConnect = false);
-            savedHosts[idx].autoConnect = true;
-            localStorage.setItem('wmux_auto_connect_host', savedHosts[idx].url);
-        }
-        localStorage.setItem('wmux_hosts', JSON.stringify(savedHosts));
-    }
-
-    loadSavedHosts();
-}
-
-function toggleAutoConnect(serverUrl) {
-    // For "This Server" in host selector
-    const currentServer = `${window.location.protocol}//${window.location.host}`;
-    const autoConnectHost = localStorage.getItem('wmux_auto_connect_host');
-
-    if (autoConnectHost === serverUrl) {
-        // Remove auto-connect
-        localStorage.removeItem('wmux_auto_connect_host');
-    } else {
-        // Set auto-connect to this server
-        const savedHosts = JSON.parse(localStorage.getItem('wmux_hosts') || '[]');
-        savedHosts.forEach(h => h.autoConnect = false);
-        localStorage.setItem('wmux_hosts', JSON.stringify(savedHosts));
-        localStorage.setItem('wmux_auto_connect_host', serverUrl);
-    }
-
-    loadSavedHosts();
-}
+// toggleHostAutoConnect() and toggleAutoConnect() removed - they were for the old host selector view
 
 function toggleLocalAutoConnect() {
     const currentServer = `${window.location.protocol}//${window.location.host}`;
@@ -746,7 +675,9 @@ function toggleLocalAutoConnect() {
 }
 
 function removeHostByIndex(idx) {
-    const realIdx = idx - 1;
+    // Check if "This Server" is in the list (it's first if present and has isLocal=true)
+    const hasLocalServer = hostsCache.length > 0 && hostsCache[0].isLocal === true;
+    const realIdx = hasLocalServer ? idx - 1 : idx;
     const savedHosts = JSON.parse(localStorage.getItem('wmux_hosts') || '[]');
 
     if (realIdx >= 0 && realIdx < savedHosts.length) {
@@ -757,24 +688,7 @@ function removeHostByIndex(idx) {
     loadHostsDialog();
 }
 
-function removeHost(idx) {
-    // For saved hosts in host selector (not dialog)
-    const savedHosts = JSON.parse(localStorage.getItem('wmux_hosts') || '[]');
-
-    if (idx >= 0 && idx < savedHosts.length) {
-        const removedHost = savedHosts[idx];
-        savedHosts.splice(idx, 1);
-        localStorage.setItem('wmux_hosts', JSON.stringify(savedHosts));
-
-        // If this was the auto-connect host, remove auto-connect
-        const autoConnectHost = localStorage.getItem('wmux_auto_connect_host');
-        if (autoConnectHost === removedHost.url) {
-            localStorage.removeItem('wmux_auto_connect_host');
-        }
-    }
-
-    loadSavedHosts();
-}
+// removeHost() removed - it was for the old host selector view. Hosts dialog uses removeHostByIndex()
 
 function connectToHost(url) {
     const currentServer = `${window.location.protocol}//${window.location.host}`;
@@ -789,7 +703,7 @@ function connectToHost(url) {
         selectedHostIndex = 0;
     }
 
-    // app.js is loaded before spa-router.js, so window.connectToBackend should exist
+    // Proceed with WebSocket connection
     if (typeof window.connectToBackend === 'function') {
         if (url === currentServer) {
             // Connect to current server (no host parameter)
@@ -808,10 +722,7 @@ window.loadHostsDialog = loadHostsDialog;
 window.connectToHost = connectToHost;
 window.toggleLocalAutoConnect = toggleLocalAutoConnect;
 window.toggleHostAutoConnectByIndex = toggleHostAutoConnectByIndex;
-window.toggleHostAutoConnect = toggleHostAutoConnect;
-window.toggleAutoConnect = toggleAutoConnect;
 window.removeHostByIndex = removeHostByIndex;
-window.removeHost = removeHost;
 
 // Terminal View Logic - will be initialized from app.js
 let terminalInitialized = false;

@@ -13,28 +13,16 @@
     <link rel="stylesheet" href="style.css" />
     <style>
         /* SPA view styles - these containers replace body's role */
-        #view-host-selector, #view-terminal {
+        #view-terminal {
             width: 100%;
             flex: 1;
             flex-direction: column;
             min-height: 0;
             position: relative;
-        }
-
-        #view-host-selector {
-            overflow-y: auto;
-        }
-
-        #view-terminal {
             overflow: hidden;
         }
 
-        /* Host selector specific styles */
-        .host-selector-container {
-            max-width: 800px;
-            margin: 0 auto;
-            padding: 20px;
-        }
+        /* Add host dialog and host item styles */
         .host-item {
             background: var(--bg-secondary);
             border: 1px solid var(--border);
@@ -84,22 +72,6 @@
     </style>
 </head>
 <body>
-    <!-- View: Host Selector (multi-host mode) -->
-    <div id="view-host-selector" style="display: none;">
-        <div class="top-banner">
-            <div class="banner-title">wmux - Select Host</div>
-        </div>
-
-        <div class="host-selector-container">
-            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px;">
-                <h2 style="margin: 0;">Available Hosts</h2>
-                <button id="show-add-host" style="background: var(--accent); color: white; border: none; border-radius: 4px; width: 48px; height: 48px; font-size: 32px; line-height: 1; cursor: pointer; box-shadow: 0 4px 8px rgba(207, 26, 55, 0.3); display: flex; align-items: center; justify-content: center; padding: 0;">+</button>
-            </div>
-            <div id="discovered-hosts"></div>
-            <div id="saved-hosts"></div>
-        </div>
-    </div>
-
     <!-- View: Terminal (single-host mode or connected) -->
     <div id="view-terminal" style="display: none;">
         <div class="top-banner">

@@ -1,8 +1,13 @@
 {
   "appId": "nl.gbraad.wmux",
   "appName": "wmux",
-  "webDir": "www",
+  "webDir": "../public",
+  "server": {
+    "cleartext": true,
+    "androidScheme": "https"
+  },
   "android": {
-    "minWebViewVersion": 90
+    "minWebViewVersion": 90,
+    "allowMixedContent": true
   }
 }
