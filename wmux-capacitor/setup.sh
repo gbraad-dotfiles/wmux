@@ -14,18 +14,13 @@ echo "Copying public files to www/..."
 mkdir -p www
 
 if [ -d "../public" ]; then
-  # Copy all public files except index.html (we'll use host-manager.html as index)
-  cp ../public/*.css www/
-  cp ../public/*.js www/ 2>/dev/null || true
-  cp ../public/*.json www/ 2>/dev/null || true
-  cp ../public/*.ttf www/ 2>/dev/null || true
-  cp ../public/*.png www/ 2>/dev/null || true
+  # Remove existing files to avoid permission issues with read-only files
+  rm -rf www/*
 
-  # Use host-manager.html as the main index for multi-host mode
-  cp ../public/host-manager.html www/index.html
-  cp ../public/connect.html www/
+  # Copy all public files (SPA mode)
+  cp -r ../public/* www/
 
-  echo "Public files copied (using host-manager as index)"
+  echo "Public files copied (SPA mode with multi-host support)"
 else
   echo "WARNING: Public directory not found at ../public/"
   exit 1
@@ -34,13 +29,40 @@ echo ""
 
 # Step 3: Add Android platform
 echo "Adding Android platform..."
-node node_modules/@capacitor/cli/bin/capacitor add android 2>/dev/null || echo "   (Android platform already exists)"
+npx cap add android 2>/dev/null || echo "   (Android platform already exists)"
 echo "Android platform ready"
+echo ""
+
+# Step 3.5: Remove Capacitor default resources
+echo "Removing Capacitor default resources..."
+if [ -d "android/app/src/main/res" ]; then
+  # Remove ALL Capacitor-generated image resources except values/
+  rm -rf android/app/src/main/res/mipmap-*
+  rm -rf android/app/src/main/res/drawable-*
+
+  # Keep drawable/ but remove all PNGs, create minimal black splash.png
+  mkdir -p android/app/src/main/res/drawable
+  rm -f android/app/src/main/res/drawable/*.png
+  # Create a 1x1 black pixel splash (minimal size)
+  convert -size 1x1 xc:black android/app/src/main/res/drawable/splash.png 2>/dev/null || echo "   (ImageMagick not available, skipping splash)"
+
+  echo "Default resources removed"
+else
+  echo "WARNING: Android res directory not found"
+fi
+echo ""
+
+# Step 3.6: Generate Android icons from icon.svg
+echo "Generating Android icons..."
+cd ..
+bash sync-icons.sh > /dev/null 2>&1 || echo "   (Icon generation failed - run sync-icons.sh manually)"
+cd wmux-capacitor
+echo "Icons generated"
 echo ""
 
 # Step 4: Sync Capacitor
 echo "Syncing Capacitor..."
-node node_modules/@capacitor/cli/bin/capacitor sync
+npx cap sync
 echo "Capacitor synced"
 echo ""
 
