@@ -400,7 +400,17 @@ async function addHost() {
     const SelfSignedBrowser = window.Capacitor?.Plugins?.SelfSignedBrowser;
 
     if (!isCapacitor) {
-        // Non-Capacitor (web browser): add directly
+        // Web browser: open connect.html in new tab to allow certificate acceptance
+        const connectWindow = window.open(`${url}/connect.html`, '_blank');
+
+        if (!connectWindow) {
+            alert('Please allow popups to test the connection');
+            document.getElementById('add-host-dialog').classList.add('active');
+            document.getElementById('add-host-overlay').classList.add('active');
+            return;
+        }
+
+        // Add the host immediately - user will manually reconnect after accepting cert
         const hosts = JSON.parse(localStorage.getItem('wmux_hosts') || '[]');
         hosts.push({ name, url, autoConnect: false });
         localStorage.setItem('wmux_hosts', JSON.stringify(hosts));
