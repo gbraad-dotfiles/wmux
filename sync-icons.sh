@@ -18,7 +18,13 @@ cp public/icon-512.png wmux-capacitor/www/
 cp public/icon-192.png wmux-capacitor/android/app/src/main/assets/public/
 cp public/icon-512.png wmux-capacitor/android/app/src/main/assets/public/
 
-# Generate Android launcher icons
+# Generate Android launcher icons (create directories first)
+mkdir -p wmux-capacitor/android/app/src/main/res/mipmap-mdpi
+mkdir -p wmux-capacitor/android/app/src/main/res/mipmap-hdpi
+mkdir -p wmux-capacitor/android/app/src/main/res/mipmap-xhdpi
+mkdir -p wmux-capacitor/android/app/src/main/res/mipmap-xxhdpi
+mkdir -p wmux-capacitor/android/app/src/main/res/mipmap-xxxhdpi
+
 magick -background transparent icon.svg -resize 48x48 PNG32:wmux-capacitor/android/app/src/main/res/mipmap-mdpi/ic_launcher.png
 magick -background transparent icon.svg -resize 48x48 PNG32:wmux-capacitor/android/app/src/main/res/mipmap-mdpi/ic_launcher_round.png
 magick -background transparent icon.svg -resize 72x72 PNG32:wmux-capacitor/android/app/src/main/res/mipmap-hdpi/ic_launcher.png
@@ -29,13 +35,6 @@ magick -background transparent icon.svg -resize 144x144 PNG32:wmux-capacitor/and
 magick -background transparent icon.svg -resize 144x144 PNG32:wmux-capacitor/android/app/src/main/res/mipmap-xxhdpi/ic_launcher_round.png
 magick -background transparent icon.svg -resize 192x192 PNG32:wmux-capacitor/android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png
 magick -background transparent icon.svg -resize 192x192 PNG32:wmux-capacitor/android/app/src/main/res/mipmap-xxxhdpi/ic_launcher_round.png
-
-# Generate Android foreground icons (adaptive)
-magick -background transparent icon.svg -resize 162x162 -gravity center -extent 162x162 PNG32:wmux-capacitor/android/app/src/main/res/mipmap-mdpi/ic_launcher_foreground.png
-magick -background transparent icon.svg -resize 162x162 -gravity center -extent 162x162 PNG32:wmux-capacitor/android/app/src/main/res/mipmap-hdpi/ic_launcher_foreground.png
-magick -background transparent icon.svg -resize 216x216 -gravity center -extent 216x216 PNG32:wmux-capacitor/android/app/src/main/res/mipmap-xhdpi/ic_launcher_foreground.png
-magick -background transparent icon.svg -resize 324x324 -gravity center -extent 324x324 PNG32:wmux-capacitor/android/app/src/main/res/mipmap-xxhdpi/ic_launcher_foreground.png
-magick -background transparent icon.svg -resize 432x432 -gravity center -extent 432x432 PNG32:wmux-capacitor/android/app/src/main/res/mipmap-xxxhdpi/ic_launcher_foreground.png
 
 echo "✓ Icons synced successfully"
 echo ""
