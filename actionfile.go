@@ -264,25 +264,26 @@ func (a *App) executeInTmux(script string, env []string, target string) (*Execut
 			shell, "-l", "-c", fullScript)
 	} else {
 		// Create new window in existing session with the command
-		tmuxCmd = exec.Command("tmux", "new-window", "-t", sessionName, "-n", a.Name,
+		// Use session: format to explicitly specify session (not window)
+		windowName := fmt.Sprintf("app:%s", a.Name)
+		tmuxCmd = exec.Command("tmux", "new-window", "-t", sessionName+":", "-n", windowName,
 			shell, "-l", "-c", fullScript)
 	}
 
 	output, err := tmuxCmd.CombinedOutput()
 	exitCode := 0
-	errMsg := ""
 
 	if err != nil {
 		if exitErr, ok := err.(*exec.ExitError); ok {
 			exitCode = exitErr.ExitCode()
 		}
-		errMsg = err.Error()
+		return nil, fmt.Errorf("tmux command failed: %v\nOutput: %s", err, string(output))
 	}
 
 	return &ExecutionResult{
 		Output:   fmt.Sprintf("Launched '%s' in tmux session '%s'\n%s", a.Name, sessionName, string(output)),
 		ExitCode: exitCode,
-		Error:    errMsg,
+		Error:    "",
 	}, nil
 }
 
