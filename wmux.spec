@@ -34,9 +34,8 @@ cp -r public/* %{buildroot}%{_datadir}/wmux/public/
 install -D -m 0644 wmux@.service %{buildroot}%{_unitdir}/wmux@.service
 install -D -m 0644 wmux-multi@.service %{buildroot}%{_unitdir}/wmux-multi@.service
 
-# Create relative symlink for service to find assets
-mkdir -p %{buildroot}%{_bindir}/public
-ln -s ../../share/wmux/public %{buildroot}%{_bindir}/public/public
+# Create symlink so binary can find public/ directory
+ln -s ../share/wmux/public %{buildroot}%{_bindir}/public
 
 %post
 %systemd_post wmux@.service

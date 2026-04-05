@@ -1096,11 +1096,23 @@ function connect(remoteHost) {
             sessionStorage.removeItem('wmux_mode_detected');
             console.log('No local wmux server detected');
 
-            // In SPA mode, show host selector; otherwise redirect
-            if (window.spaMode && typeof window.showView === 'function') {
-                window.showView('host-selector');
+            // In SPA mode, show hosts dialog; otherwise redirect
+            if (window.spaMode && typeof window.loadHostsDialog === 'function') {
+                window.loadHostsDialog();
+                const hostsDialog = document.getElementById('hosts-dialog');
+                const hostsOverlay = document.getElementById('hosts-overlay');
+                if (hostsDialog && hostsOverlay) {
+                    hostsDialog.classList.add('active');
+                    hostsOverlay.classList.add('active');
+                }
             } else {
-                window.location.href = '/host-manager.html';
+                // Show hosts dialog in SPA
+                const hostsDialog = document.getElementById('hosts-dialog');
+                const hostsOverlay = document.getElementById('hosts-overlay');
+                if (hostsDialog && hostsOverlay) {
+                    hostsDialog.classList.add('active');
+                    hostsOverlay.classList.add('active');
+                }
             }
             return;
         }
@@ -1143,11 +1155,23 @@ function connect(remoteHost) {
             sessionStorage.removeItem('wmux_mode_detected');
             console.log('No local wmux server detected');
 
-            // In SPA mode, show host selector; otherwise redirect
-            if (window.spaMode && typeof window.showView === 'function') {
-                window.showView('host-selector');
+            // In SPA mode, show hosts dialog; otherwise redirect
+            if (window.spaMode && typeof window.loadHostsDialog === 'function') {
+                window.loadHostsDialog();
+                const hostsDialog = document.getElementById('hosts-dialog');
+                const hostsOverlay = document.getElementById('hosts-overlay');
+                if (hostsDialog && hostsOverlay) {
+                    hostsDialog.classList.add('active');
+                    hostsOverlay.classList.add('active');
+                }
             } else {
-                window.location.href = '/host-manager.html';
+                // Show hosts dialog in SPA
+                const hostsDialog = document.getElementById('hosts-dialog');
+                const hostsOverlay = document.getElementById('hosts-overlay');
+                if (hostsDialog && hostsOverlay) {
+                    hostsDialog.classList.add('active');
+                    hostsOverlay.classList.add('active');
+                }
             }
             return;
         }
