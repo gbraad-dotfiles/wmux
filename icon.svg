@@ -92,16 +92,87 @@
          result="composite2"
          id="feComposite5865" />
     </filter>
+    <filter
+       inkscape:menu-tooltip="In and out glow with a possible offset and colorizable flood"
+       inkscape:menu="Shadows and Glows"
+       inkscape:label="Cutout Glow"
+       style="color-interpolation-filters:sRGB;"
+       id="filter17"
+       x="-0.033236946"
+       y="-0.0287717"
+       width="1.0803226"
+       height="1.0695316">
+      <feOffset
+         dy="3"
+         dx="3"
+         id="feOffset17" />
+      <feGaussianBlur
+         stdDeviation="3"
+         result="blur"
+         id="feGaussianBlur17" />
+      <feFlood
+         flood-color="rgb(0,0,0)"
+         flood-opacity="1"
+         result="flood"
+         id="feFlood17" />
+      <feComposite
+         in="flood"
+         in2="SourceGraphic"
+         operator="in"
+         result="composite"
+         id="feComposite17" />
+      <feBlend
+         in="blur"
+         in2="composite"
+         mode="normal"
+         id="feBlend17" />
+    </filter>
+    <filter
+       y="-0.047952834"
+       height="1.0959057"
+       inkscape:menu-tooltip="Darkens the edge with an inner blur and adds a flexible glow"
+       inkscape:menu="Shadows and Glows"
+       inkscape:label="Dark and Glow"
+       style="color-interpolation-filters:sRGB;"
+       id="filter19"
+       x="-0.05539491"
+       width="1.1107898">
+      <feGaussianBlur
+         stdDeviation="5"
+         result="result6"
+         id="feGaussianBlur18" />
+      <feComposite
+         result="result8"
+         in="SourceGraphic"
+         operator="atop"
+         in2="result6"
+         id="feComposite18" />
+      <feComposite
+         result="result9"
+         operator="over"
+         in2="SourceAlpha"
+         in="result8"
+         id="feComposite19" />
+      <feColorMatrix
+         values="1 0 0 0 0 0 1 0 0 0 0 0 1 0 0 0 0 0 1 0 "
+         result="result10"
+         id="feColorMatrix19" />
+      <feBlend
+         in="result10"
+         mode="normal"
+         in2="result6"
+         id="feBlend19" />
+    </filter>
   </defs>
   <sodipodi:namedview
      id="base"
-     pagecolor="#ffffff"
+     pagecolor="#000000"
      bordercolor="#666666"
      borderopacity="1.0"
      inkscape:pageopacity="0.0"
      inkscape:pageshadow="2"
      inkscape:zoom="0.9899495"
-     inkscape:cx="72.730983"
+     inkscape:cx="73.236059"
      inkscape:cy="134.85536"
      inkscape:document-units="px"
      inkscape:current-layer="layer1"
@@ -132,42 +203,31 @@
      inkscape:groupmode="layer"
      id="layer1"
      transform="translate(0,-1015.3622)">
-    <text
-       id="text4153"
-       y="823.79077"
-       x="142.85715"
-       style="font-style:normal;font-weight:normal;line-height:0%;font-family:sans-serif;letter-spacing:0px;word-spacing:0px;fill:#ff8c00;fill-opacity:1;stroke:none;stroke-width:1px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1"
-       xml:space="preserve"><tspan
-         y="823.79077"
-         x="142.85715"
-         id="tspan4155"
-         sodipodi:role="line"
-         style="font-size:40px;line-height:1.25"> </tspan></text>
-    <g
-       id="g2"
-       transform="matrix(1.0121409,0,0,1.0121409,-3.1080689,-15.43547)"
-       style="stroke-width:0.988005">
-      <circle
-         r="249.60745"
-         cy="1271.3619"
-         cx="256"
-         inkscape:export-ydpi="90.709999"
-         inkscape:export-xdpi="90.709999"
-         inkscape:export-filename="/home/gbraad/Projects/B2G-FxOS-hardware-system/style/icons/icon_512.png"
-         id="path2989-9"
-         style="fill:#b3b3b3;fill-opacity:1;stroke:#000000;stroke-width:3.45802;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:1" />
-      <circle
-         transform="matrix(3.3084184,0,0,3.3084184,-60.514039,-1557.0444)"
-         r="59.621181"
-         cy="854.91205"
-         cx="95.669289"
-         id="path3759-5"
-         style="fill:#000000;fill-opacity:1;stroke:#000000;stroke-width:0.10135;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:1;filter:url(#filter3499)" />
-      <path
-         style="font-weight:bold;font-size:32px;line-height:1.25;font-family:'Courier New';-inkscape-font-specification:'Courier New Bold';fill:#ff8c00;stroke-width:0.988004"
-         d="M 305.28514,1271.2557 184.13038,1192.752 q -9.12309,-5.9731 -12.22494,-10.6669 -2.91939,-4.6925 -2.91939,-11.9462 0,-9.1734 5.65632,-15.7854 5.65631,-6.6134 13.31972,-6.6134 4.74402,0 14.59697,6.186 l 180.45489,117.3296 -180.45489,117.3281 q -9.85295,6.4004 -14.59697,6.4004 -7.66341,0 -13.31972,-6.6134 -5.65632,-6.6134 -5.65632,-15.9997 0,-7.2524 2.91939,-11.9462 3.10185,-4.6925 12.22494,-10.6656 z"
-         id="text1"
-         aria-label="&gt;" />
-    </g>
+    <circle
+       r="252.63791"
+       cy="1271.3619"
+       cx="256"
+       inkscape:export-ydpi="90.709999"
+       inkscape:export-xdpi="90.709999"
+       inkscape:export-filename="/home/gbraad/Projects/B2G-FxOS-hardware-system/style/icons/icon_512.png"
+       id="path2989-9"
+       style="fill:#b3b3b3;fill-opacity:1;stroke:#000000;stroke-width:3.5;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:1" />
+    <circle
+       transform="matrix(3.3485856,0,0,3.3485856,-64.356803,-1591.3838)"
+       r="59.621181"
+       cy="854.91205"
+       cx="95.669289"
+       id="path3759-5"
+       style="fill:#000000;fill-opacity:1;stroke:#000000;stroke-width:0.10135;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:1;filter:url(#filter3499)" />
+    <path
+       style="font-weight:bold;font-size:32px;line-height:1.25;font-family:'Courier New';-inkscape-font-specification:'Courier New Bold';fill:#ff8c00;stroke-width:0.999999;filter:url(#filter19)"
+       d="m 305.88351,1271.2544 -122.62569,-79.4568 q -9.23385,-6.0456 -12.37336,-10.7964 -2.95484,-4.7495 -2.95484,-12.0912 0,-9.2848 5.725,-15.9771 5.72498,-6.6937 13.48143,-6.6937 4.80162,0 14.77419,6.2611 l 182.64578,118.7541 -182.64578,118.7526 q -9.97257,6.4781 -14.77419,6.4781 -7.75645,0 -13.48143,-6.6937 -5.725,-6.6937 -5.725,-16.1939 0,-7.3405 2.95484,-12.0913 3.13951,-4.7495 12.37336,-10.7951 z"
+       id="text1"
+       aria-label="&gt;" />
+    <path
+       style="font-weight:bold;font-size:32px;line-height:1.25;font-family:'Courier New';-inkscape-font-specification:'Courier New Bold';fill:#ff8c00;stroke-width:0.999999"
+       d="m 305.88351,1271.2544 -122.62569,-79.4568 q -9.23385,-6.0456 -12.37336,-10.7964 -2.95484,-4.7495 -2.95484,-12.0912 0,-9.2848 5.725,-15.9771 5.72498,-6.6937 13.48143,-6.6937 4.80162,0 14.77419,6.2611 l 182.64578,118.7541 -182.64578,118.7526 q -9.97257,6.4781 -14.77419,6.4781 -7.75645,0 -13.48143,-6.6937 -5.725,-6.6937 -5.725,-16.1939 0,-7.3405 2.95484,-12.0913 3.13951,-4.7495 12.37336,-10.7951 z"
+       id="path17"
+       aria-label="&gt;" />
   </g>
 </svg>
