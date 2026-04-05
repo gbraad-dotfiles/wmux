@@ -925,6 +925,19 @@ function connect(remoteHost) {
         wsUrl = `${protocol}//${window.location.host}/ws`;
     }
 
+    // Close existing connection if any
+    if (ws) {
+        console.log('Closing existing WebSocket connection');
+        ws.onclose = null; // Remove onclose handler to prevent reconnect
+        ws.close();
+        ws = null;
+
+        // Reset session state
+        sessionActive = false;
+        currentSessionName = null;
+        term.reset();
+    }
+
     console.log('Connecting to:', wsUrl);
     ws = new WebSocket(wsUrl);
 
