@@ -1343,12 +1343,18 @@ const appsList = document.getElementById('apps-list');
 
 async function loadApps() {
     try {
-        const response = await fetch('/api/apps');
+        // Use the same host as WebSocket connection
+        let apiUrl = '/api/apps';
+        if (currentRemoteHost) {
+            apiUrl = `${currentRemoteHost}/api/apps`;
+        }
+
+        const response = await fetch(apiUrl);
         const data = await response.json();
         appsCache = data.apps || [];
         renderApps(appsCache);
     } catch (err) {
-        appsList.innerHTML = '<div style="padding: 20px; text-align: center; color: var(--accent);">Failed to load apps. Is amux running?</div>';
+        appsList.innerHTML = '<div style="padding: 20px; text-align: center; color: var(--accent);">Failed to load apps.</div>';
         console.error('Failed to load apps:', err);
     }
 }
@@ -2259,7 +2265,12 @@ async function closeXpraApp(appName) {
 
     // Call API to stop xpra session
     try {
-        const response = await fetch('/api/xpra/stop', {
+        let apiUrl = '/api/xpra/stop';
+        if (currentRemoteHost) {
+            apiUrl = `${currentRemoteHost}/api/xpra/stop`;
+        }
+
+        const response = await fetch(apiUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ appName: appName })
