@@ -2,11 +2,13 @@ package main
 
 import (
 	"crypto/tls"
+	"embed"
 	"encoding/base64"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
+	"io/fs"
 	"log"
 	"net"
 	"net/http"
@@ -19,6 +21,9 @@ import (
 	"github.com/creack/pty"
 	"github.com/gorilla/websocket"
 )
+
+//go:embed public
+var publicFS embed.FS
 
 const (
 	Version   = "1.0.0"
@@ -1188,12 +1193,40 @@ func main() {
 		log.Printf("Tailscale network detected and active\n")
 	}
 
+	// Check if local ./public directory exists, otherwise use embedded
+	var publicDir http.FileSystem
+	var useLocalPublic bool
+	if _, err := os.Stat("./public"); err == nil {
+		log.Println("Using local ./public directory")
+		publicDir = http.Dir("./public")
+		useLocalPublic = true
+	} else {
+		log.Println("Using embedded public directory")
+		publicSubFS, err := fs.Sub(publicFS, "public")
+		if err != nil {
+			log.Fatal("Failed to get embedded public directory:", err)
+		}
+		publicDir = http.FS(publicSubFS)
+		useLocalPublic = false
+	}
+
 	// SPA: Always serve index.html for root, static files for everything else
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/" {
-			http.ServeFile(w, r, "./public/index.html")
+			if useLocalPublic {
+				http.ServeFile(w, r, "./public/index.html")
+			} else {
+				data, err := publicDir.(http.FileSystem).Open("index.html")
+				if err != nil {
+					http.Error(w, "Failed to read index.html", http.StatusInternalServerError)
+					return
+				}
+				defer data.Close()
+				w.Header().Set("Content-Type", "text/html")
+				io.Copy(w, data)
+			}
 		} else {
-			http.FileServer(http.Dir("./public")).ServeHTTP(w, r)
+			http.FileServer(publicDir).ServeHTTP(w, r)
 		}
 	})
 
