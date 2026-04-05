@@ -384,6 +384,12 @@ async function loadSavedHosts() {
 
     // Get current server URL (this server)
     const currentServer = `${window.location.protocol}//${window.location.host}`;
+    const autoConnectHost = localStorage.getItem('wmux_auto_connect_host');
+
+    // Sync autoConnect property on hosts based on wmux_auto_connect_host
+    hosts.forEach(host => {
+        host.autoConnect = (autoConnectHost === host.url);
+    });
 
     // Check if current server has backend
     let hasBackend = false;
@@ -406,7 +412,7 @@ async function loadSavedHosts() {
 
     // Only add "This Server" if backend exists
     if (hasBackend) {
-        const localAutoConnect = localStorage.getItem('wmux_auto_connect_host') === currentServer;
+        const localAutoConnect = autoConnectHost === currentServer;
         html += `
             <div class="host-item" style="border-color: #0066FF; ${localAutoConnect ? 'background: #1a1a2a;' : ''}">
                 <div class="host-info">
@@ -640,6 +646,13 @@ async function loadHostsDialog() {
         hasBackend = false;
     }
 
+    // Sync autoConnect property on saved hosts
+    const syncedSavedHosts = savedHosts.map(h => ({
+        ...h,
+        isLocal: false,
+        autoConnect: autoConnectHost === h.url
+    }));
+
     // Only include "This Server" if backend exists
     hostsCache = hasBackend ? [
         {
@@ -648,8 +661,8 @@ async function loadHostsDialog() {
             isLocal: true,
             autoConnect: autoConnectHost === currentServer
         },
-        ...savedHosts.map(h => ({ ...h, isLocal: false }))
-    ] : savedHosts.map(h => ({ ...h, isLocal: false }));
+        ...syncedSavedHosts
+    ] : syncedSavedHosts;
 
     hostSearchQuery = '';
     selectedHostIndex = 0;
@@ -670,6 +683,48 @@ function toggleHostAutoConnectByIndex(idx) {
     }
 
     loadHostsDialog();
+}
+
+function toggleHostAutoConnect(idx) {
+    // For saved hosts in host selector (not dialog)
+    const savedHosts = JSON.parse(localStorage.getItem('wmux_hosts') || '[]');
+
+    if (idx >= 0 && idx < savedHosts.length) {
+        const isCurrentlyAuto = savedHosts[idx].autoConnect || false;
+
+        if (isCurrentlyAuto) {
+            // Turn off auto-connect
+            savedHosts[idx].autoConnect = false;
+            localStorage.removeItem('wmux_auto_connect_host');
+        } else {
+            // Turn on auto-connect for this host
+            savedHosts.forEach(h => h.autoConnect = false);
+            savedHosts[idx].autoConnect = true;
+            localStorage.setItem('wmux_auto_connect_host', savedHosts[idx].url);
+        }
+        localStorage.setItem('wmux_hosts', JSON.stringify(savedHosts));
+    }
+
+    loadSavedHosts();
+}
+
+function toggleAutoConnect(serverUrl) {
+    // For "This Server" in host selector
+    const currentServer = `${window.location.protocol}//${window.location.host}`;
+    const autoConnectHost = localStorage.getItem('wmux_auto_connect_host');
+
+    if (autoConnectHost === serverUrl) {
+        // Remove auto-connect
+        localStorage.removeItem('wmux_auto_connect_host');
+    } else {
+        // Set auto-connect to this server
+        const savedHosts = JSON.parse(localStorage.getItem('wmux_hosts') || '[]');
+        savedHosts.forEach(h => h.autoConnect = false);
+        localStorage.setItem('wmux_hosts', JSON.stringify(savedHosts));
+        localStorage.setItem('wmux_auto_connect_host', serverUrl);
+    }
+
+    loadSavedHosts();
 }
 
 function toggleLocalAutoConnect() {
@@ -700,6 +755,25 @@ function removeHostByIndex(idx) {
     }
 
     loadHostsDialog();
+}
+
+function removeHost(idx) {
+    // For saved hosts in host selector (not dialog)
+    const savedHosts = JSON.parse(localStorage.getItem('wmux_hosts') || '[]');
+
+    if (idx >= 0 && idx < savedHosts.length) {
+        const removedHost = savedHosts[idx];
+        savedHosts.splice(idx, 1);
+        localStorage.setItem('wmux_hosts', JSON.stringify(savedHosts));
+
+        // If this was the auto-connect host, remove auto-connect
+        const autoConnectHost = localStorage.getItem('wmux_auto_connect_host');
+        if (autoConnectHost === removedHost.url) {
+            localStorage.removeItem('wmux_auto_connect_host');
+        }
+    }
+
+    loadSavedHosts();
 }
 
 function connectToHost(url) {
@@ -734,7 +808,10 @@ window.loadHostsDialog = loadHostsDialog;
 window.connectToHost = connectToHost;
 window.toggleLocalAutoConnect = toggleLocalAutoConnect;
 window.toggleHostAutoConnectByIndex = toggleHostAutoConnectByIndex;
+window.toggleHostAutoConnect = toggleHostAutoConnect;
+window.toggleAutoConnect = toggleAutoConnect;
 window.removeHostByIndex = removeHostByIndex;
+window.removeHost = removeHost;
 
 // Terminal View Logic - will be initialized from app.js
 let terminalInitialized = false;
