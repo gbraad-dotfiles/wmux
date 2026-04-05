@@ -59,18 +59,21 @@ var upgrader = websocket.Upgrader{
 	},
 }
 
+var appsManager *AppsManager
+
 type Message struct {
-	Type       string       `json:"type"`
-	Data       string       `json:"data,omitempty"`
-	Command    string       `json:"command,omitempty"`
-	Rows       int          `json:"rows,omitempty"`
-	Cols       int          `json:"cols,omitempty"`
-	Cmd        string       `json:"cmd,omitempty"`
-	Session    string       `json:"session,omitempty"`
-	Sessions   []string     `json:"sessions,omitempty"`
-	NewSession bool         `json:"newSession,omitempty"`
-	Windows    []TmuxWindow `json:"windows,omitempty"`
-	Index      int          `json:"index,omitempty"`
+	Type       string        `json:"type"`
+	Data       string        `json:"data,omitempty"`
+	Command    string        `json:"command,omitempty"`
+	Rows       int           `json:"rows,omitempty"`
+	Cols       int           `json:"cols,omitempty"`
+	Cmd        string        `json:"cmd,omitempty"`
+	Session    string        `json:"session,omitempty"`
+	Sessions   []string      `json:"sessions,omitempty"`
+	NewSession bool          `json:"newSession,omitempty"`
+	Windows    []TmuxWindow  `json:"windows,omitempty"`
+	Apps       []*AppSummary `json:"apps,omitempty"`
+	Index      int           `json:"index,omitempty"`
 }
 
 type TmuxWindow struct {
@@ -513,10 +516,12 @@ func (am *AppsManager) handleRunApp(w http.ResponseWriter, r *http.Request) {
 
 	result, err := app.ExecuteAction(req.Action, req.Target, req.Mode)
 	if err != nil {
+		log.Printf("Execution failed: %v", err)
 		http.Error(w, fmt.Sprintf("Execution failed: %v", err), http.StatusInternalServerError)
 		return
 	}
 
+	log.Printf("Execution result: %s (exit code: %d)", result.Output, result.ExitCode)
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"status": "success",
 		"result": result,
@@ -766,6 +771,34 @@ func makeWebSocketHandler(defaultSession string) http.HandlerFunc {
 		case "list":
 			sessions, _ := listTmuxSessions()
 			safeWriteJSON(Message{Type: "sessions", Sessions: sessions})
+
+		case "list_apps":
+			// Get apps list from AppsManager
+			apps := make([]*AppSummary, 0)
+			if appsManager != nil {
+				pattern := filepath.Join(appsManager.config.AppsPath, "*.md")
+				files, err := filepath.Glob(pattern)
+				if err == nil {
+					for _, file := range files {
+						basename := filepath.Base(file)
+						if strings.EqualFold(basename, "README.md") {
+							continue
+						}
+						app, err := ParseActionFile(file)
+						if err != nil {
+							log.Printf("Warning: failed to parse %s: %v", file, err)
+							continue
+						}
+						apps = append(apps, &AppSummary{
+							Name:    app.Name,
+							Title:   app.Title,
+							Path:    app.Path,
+							Actions: app.ListActions(),
+						})
+					}
+				}
+			}
+			safeWriteJSON(Message{Type: "apps", Apps: apps})
 
 		case "start":
 			sessionName := msg.Session
@@ -1187,7 +1220,6 @@ func main() {
 	serverHost := strings.Split(bindAddr, ":")[0]
 
 	// Apps functionality (if enabled)
-	var appsManager *AppsManager
 	if !*noApps {
 		appsConfig := &AppsConfig{
 			AppsPath:         *appsPath,

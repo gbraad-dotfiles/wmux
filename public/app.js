@@ -1074,6 +1074,11 @@ function connect(remoteHost) {
                 updateWindowsList(msg.windows);
                 break;
 
+            case 'apps':
+                appsCache = msg.apps || [];
+                renderApps(appsCache);
+                break;
+
             case 'error':
                 term.write(`\x1b[31mError: ${msg.data}\x1b[0m\r\n`);
                 updateStatus('Error', false);
@@ -1344,21 +1349,13 @@ const appsDialog = document.getElementById('apps-dialog');
 const appsOverlay = document.getElementById('apps-overlay');
 const appsList = document.getElementById('apps-list');
 
-async function loadApps() {
-    try {
-        // Use the same host as WebSocket connection
-        let apiUrl = '/api/apps';
-        if (currentRemoteHost) {
-            apiUrl = `${currentRemoteHost}/api/apps`;
-        }
-
-        const response = await fetch(apiUrl);
-        const data = await response.json();
-        appsCache = data.apps || [];
-        renderApps(appsCache);
-    } catch (err) {
-        appsList.innerHTML = '<div style="padding: 20px; text-align: center; color: var(--accent);">Failed to load apps.</div>';
-        console.error('Failed to load apps:', err);
+function loadApps() {
+    // Request apps via WebSocket instead of fetch
+    if (ws && ws.readyState === WebSocket.OPEN) {
+        appsList.innerHTML = '<div style="padding: 20px; text-align: center; color: var(--text-secondary);">Loading apps...</div>';
+        send({ type: 'list_apps' });
+    } else {
+        appsList.innerHTML = '<div style="padding: 20px; text-align: center; color: var(--accent);">Not connected to server</div>';
     }
 }
 
@@ -2415,7 +2412,12 @@ function removeXpraAppButton(appName) {
 // Restore active xpra sessions on page load
 async function restoreXpraSessions() {
     try {
-        const response = await fetch('/api/xpra/sessions');
+        let apiUrl = '/api/xpra/sessions';
+        if (currentRemoteHost) {
+            apiUrl = `${currentRemoteHost}/api/xpra/sessions`;
+        }
+
+        const response = await fetch(apiUrl);
         if (!response.ok) return;
 
         const data = await response.json();
