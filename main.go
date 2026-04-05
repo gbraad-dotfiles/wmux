@@ -26,8 +26,8 @@ import (
 var publicFS embed.FS
 
 const (
-	Version   = "1.0.0"
-	BuildDate = "2026-04-02"
+	Version   = "1.0.2"
+	BuildDate = "2026-04-05"
 )
 
 // Apps configuration and management
