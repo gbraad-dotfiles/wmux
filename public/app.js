@@ -932,6 +932,9 @@ function connect(remoteHost) {
         updateStatus('Ready', true);
         reconnectAttempts = 0; // Reset on successful connection
 
+        // Update page title with session name
+        document.title = currentSessionName ? `wmux - ${currentSessionName}` : 'wmux';
+
         // Mark mode as detected (connection successful)
         if (sessionStorage.getItem('wmux_mode_detected') === 'trying') {
             sessionStorage.setItem('wmux_mode_detected', 'done');
@@ -1123,6 +1126,7 @@ function connect(remoteHost) {
 
     ws.onclose = (event) => {
         updateStatus('Disconnected', false);
+        document.title = 'wmux';
         term.write('\r\n\x1b[33mDisconnected from server\x1b[0m\r\n');
         sessionActive = false;
         connected = false;
