@@ -28,6 +28,7 @@ function initTerminal() {
             white: '#ffffff'
         },
         allowProposedApi: true,
+        allowTransparency: false,
         scrollback: 10000,
         disableStdin: false,
         convertEol: false,
@@ -67,14 +68,50 @@ function initTerminal() {
 }
 
 function setupClipboardSupport() {
-    // Clipboard support - Copy
-    term.onSelectionChange(() => {
-        const selection = term.getSelection();
-        if (selection && sessionActive) {
-            navigator.clipboard.writeText(selection).catch(err => {
-                // Silently fail - don't spam console
-            });
+    let mouseDownPos = null;
+    let selectionMade = false;
+
+    // Track mouse down position
+    document.addEventListener('mousedown', (e) => {
+        if (e.target.closest('#terminal')) {
+            mouseDownPos = { x: e.clientX, y: e.clientY };
+            selectionMade = false;
         }
+    });
+
+    // Detect if user actually dragged (made a selection)
+    document.addEventListener('mousemove', (e) => {
+        if (mouseDownPos && e.buttons === 1) {
+            const distance = Math.sqrt(
+                Math.pow(e.clientX - mouseDownPos.x, 2) +
+                Math.pow(e.clientY - mouseDownPos.y, 2)
+            );
+            if (distance > 10) { // Threshold for drag vs click
+                selectionMade = true;
+            }
+        }
+    });
+
+    // Only request clipboard if user actually made a selection
+    document.addEventListener('mouseup', (e) => {
+        if (!selectionMade || !e.target.closest('#terminal')) {
+            mouseDownPos = null;
+            selectionMade = false;
+            return;
+        }
+
+        setTimeout(() => {
+            // Try browser selection first
+            const browserSel = term.getSelection();
+            if (browserSel) {
+                navigator.clipboard.writeText(browserSel).catch(() => {});
+            } else if (ws && ws.readyState === WebSocket.OPEN && sessionActive) {
+                // Browser selection empty - request tmux buffer
+                send({ type: 'get_clipboard' });
+            }
+            mouseDownPos = null;
+            selectionMade = false;
+        }, 150);
     });
 }
 
@@ -134,6 +171,28 @@ function setupEventListeners() {
 
     // Desktop keyboard shortcuts - use capture phase to intercept before terminal
     window.addEventListener('keydown', async (e) => {
+        // F12 toggles top banner visibility (works everywhere)
+        if (e.key === 'F12') {
+            e.preventDefault();
+            const banner = document.querySelector('.top-banner');
+            if (banner) {
+                banner.style.display = banner.style.display === 'none' ? '' : 'none';
+                // Trigger terminal resize after banner toggle
+                setTimeout(() => {
+                    setActualVH();
+                    fitAddon.fit();
+                    if (connected && sessionActive) {
+                        send({
+                            type: 'resize',
+                            rows: term.rows,
+                            cols: term.cols
+                        });
+                    }
+                }, 50);
+            }
+            return;
+        }
+
         // Don't intercept shortcuts if user is typing in an input field (but allow terminal)
         const isTyping = (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') &&
                          !e.target.closest('#terminal-container');
@@ -1087,6 +1146,14 @@ function connect(remoteHost) {
             case 'apps':
                 appsCache = msg.apps || [];
                 renderApps(appsCache);
+                break;
+
+            case 'clipboard':
+                if (msg.data) {
+                    navigator.clipboard.writeText(msg.data).catch(err => {
+                        console.warn('Failed to copy to clipboard:', err);
+                    });
+                }
                 break;
 
             case 'error':

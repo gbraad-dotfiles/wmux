@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/creack/pty"
 	"github.com/gorilla/websocket"
@@ -852,6 +853,27 @@ func makeWebSocketHandler(defaultSession string) http.HandlerFunc {
 				session.close()
 				safeWriteJSON(Message{Type: "close"})
 				session = nil
+			}
+
+		case "get_clipboard":
+			if session != nil {
+				// Try to get tmux selection - check if in copy mode
+				captureCmd := exec.Command("tmux", "display-message", "-p", "-t", session.sessionID, "#{pane_in_mode}")
+				output, _ := captureCmd.Output()
+				inCopyMode := strings.TrimSpace(string(output)) == "1"
+
+				if inCopyMode {
+					// In copy mode - send copy command then get buffer
+					exec.Command("tmux", "send-keys", "-t", session.sessionID, "-X", "copy-selection").Run()
+					time.Sleep(50 * time.Millisecond)
+				}
+
+				// Get tmux paste buffer content
+				cmd := exec.Command("tmux", "show-buffer")
+				bufOutput, err := cmd.Output()
+				if err == nil && len(bufOutput) > 0 {
+					safeWriteJSON(Message{Type: "clipboard", Data: string(bufOutput)})
+				}
 			}
 
 		case "list_windows":
