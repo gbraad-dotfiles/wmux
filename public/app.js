@@ -201,6 +201,7 @@ function setupEventListeners() {
         const hasActiveDialog =
             (document.getElementById('hosts-dialog')?.classList.contains('active')) ||
             (document.getElementById('apps-dialog')?.classList.contains('active')) ||
+            (document.getElementById('macros-dialog')?.classList.contains('active')) ||
             (document.getElementById('windows-dialog')?.classList.contains('active')) ||
             (document.getElementById('sessions-dialog')?.classList.contains('active')) ||
             (document.getElementById('controls-dialog')?.classList.contains('active')) ||
@@ -213,6 +214,13 @@ function setupEventListeners() {
         if (hasActiveDialog) {
             // Check if hosts dialog is handling this event (from spa-router.js)
             if (typeof window.handleHostsKeydown === 'function' && window.handleHostsKeydown(e)) {
+                e.preventDefault();
+                e.stopPropagation();
+                return;
+            }
+
+            // Check if macros dialog is handling this event
+            if (handleMacrosKeydown(e)) {
                 e.preventDefault();
                 e.stopPropagation();
                 return;
@@ -254,6 +262,7 @@ function setupEventListeners() {
                 const activeDialogs = [
                     { dialog: 'hosts-dialog', overlay: 'hosts-overlay' },
                     { dialog: 'apps-dialog', overlay: 'apps-overlay' },
+                    { dialog: 'macros-dialog', overlay: 'macros-overlay' },
                     { dialog: 'sessions-dialog', overlay: 'sessions-overlay' },
                     { dialog: 'windows-dialog', overlay: 'windows-overlay' },
                     { dialog: 'controls-dialog', overlay: 'controls-overlay' },
@@ -345,6 +354,20 @@ function setupEventListeners() {
                     appsDialog.classList.add('active');
                     appsOverlay.classList.add('active');
                     performAppSearch('');
+                }
+                return;
+            }
+
+            // M for Macros
+            if (e.key === 'm' || e.key === 'M') {
+                e.preventDefault();
+                e.stopPropagation();
+                if (macrosDialog && macrosOverlay && sessionActive) {
+                    macroSearchQuery = '';
+                    selectedMacroIndex = 0;
+                    macrosDialog.classList.add('active');
+                    macrosOverlay.classList.add('active');
+                    loadMacros();
                 }
                 return;
             }
@@ -1095,6 +1118,7 @@ function connect(remoteHost) {
                 }
 
                 // Show controls and windows buttons
+                document.getElementById('macros-btn').style.display = 'block';
                 document.getElementById('apps-btn').style.display = 'block';
                 document.getElementById('sessions-btn').style.display = 'block';
                 document.getElementById('controls-btn').style.display = 'block';
@@ -1123,6 +1147,7 @@ function connect(remoteHost) {
                 currentSessionName = null;
 
                 // Hide controls and windows buttons
+                document.getElementById('macros-btn').style.display = 'none';
                 document.getElementById('apps-btn').style.display = 'none';
                 document.getElementById('sessions-btn').style.display = 'none';
                 document.getElementById('controls-btn').style.display = 'none';
@@ -1154,6 +1179,11 @@ function connect(remoteHost) {
                         console.warn('Failed to copy to clipboard:', err);
                     });
                 }
+                break;
+
+            case 'aliases':
+                macrosCache = msg.aliases || [];
+                renderMacros(macrosCache);
                 break;
 
             case 'error':
@@ -1623,6 +1653,171 @@ function handleAppsKeydown(e) {
         return true;
     }
 
+    return false;
+}
+
+// Macros dialog
+const macrosBtn = document.getElementById('macros-btn');
+const closeMacros = document.getElementById('close-macros');
+const macrosDialog = document.getElementById('macros-dialog');
+const macrosOverlay = document.getElementById('macros-overlay');
+const macrosList = document.getElementById('macros-list');
+
+let macrosCache = [];
+let filteredMacros = [];
+let selectedMacroIndex = 0;
+let macroSearchQuery = '';
+
+function loadMacros() {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+        macrosList.innerHTML = '<div style="padding: 20px; text-align: center; color: var(--text-secondary);">Loading macros...</div>';
+        send({ type: 'list_aliases' });
+    } else {
+        macrosList.innerHTML = '<div style="padding: 20px; text-align: center; color: var(--accent);">Not connected to server</div>';
+    }
+}
+
+function renderMacros(aliases) {
+    filteredMacros = aliases;
+
+    if (aliases.length === 0) {
+        macrosList.innerHTML = '<div style="padding: 20px; text-align: center; color: var(--text-secondary);">No aliases found</div>';
+        return;
+    }
+
+    if (selectedMacroIndex >= aliases.length) selectedMacroIndex = aliases.length - 1;
+    if (selectedMacroIndex < 0) selectedMacroIndex = 0;
+
+    macrosList.innerHTML = aliases.map((alias, idx) => {
+        const isSelected = idx === selectedMacroIndex;
+        const highlightedName = highlightMatches(alias.name, macroSearchQuery);
+        const highlightedCmd = highlightMatches(alias.command, macroSearchQuery);
+        return `
+            <div class="app-item" data-index="${idx}" data-name="${alias.name}" style="cursor: pointer; ${isSelected ? 'background: var(--accent); border-color: var(--accent);' : ''}">
+                <div style="flex: 1;">
+                    <div style="font-weight: 500; color: var(--text-primary);">${highlightedName}</div>
+                    <div style="font-size: 0.75em; color: var(--text-secondary); margin-top: 2px;">${highlightedCmd}</div>
+                </div>
+            </div>
+        `;
+    }).join('');
+
+    macrosList.querySelectorAll('.app-item').forEach(item => {
+        item.addEventListener('click', () => runMacro(item.dataset.name));
+    });
+
+    const selectedItem = macrosList.querySelector(`[data-index="${selectedMacroIndex}"]`);
+    if (selectedItem) selectedItem.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+}
+
+function performMacroSearch(query) {
+    document.getElementById('macro-search-query').textContent = query ? `"${query}"` : '';
+    if (!query) {
+        selectedMacroIndex = 0;
+        renderMacros(macrosCache);
+        return;
+    }
+
+    const queryLower = query.toLowerCase();
+    const results = macrosCache.filter(alias => {
+        let score = 0;
+        let qIdx = 0;
+        const text = (alias.name + ' ' + alias.command).toLowerCase();
+        for (let i = 0; i < text.length && qIdx < queryLower.length; i++) {
+            if (text[i] === queryLower[qIdx]) { score++; qIdx++; }
+        }
+        return qIdx === queryLower.length;
+    });
+
+    selectedMacroIndex = 0;
+    renderMacros(results);
+}
+
+function runMacro(name) {
+    const alias = macrosCache.find(a => a.name === name);
+    if (!alias) return;
+
+    macrosDialog.classList.remove('active');
+    macrosOverlay.classList.remove('active');
+    macroSearchQuery = '';
+    selectedMacroIndex = 0;
+    document.getElementById('macro-search-query').textContent = '';
+
+    // Send the alias command to the terminal
+    if (ws && ws.readyState === WebSocket.OPEN) {
+        send({ type: 'input', data: alias.name + '\r' });
+    }
+}
+
+if (macrosBtn) {
+    macrosBtn.addEventListener('click', () => {
+        macrosDialog.classList.add('active');
+        macrosOverlay.classList.add('active');
+        loadMacros();
+    });
+}
+
+if (closeMacros) {
+    closeMacros.addEventListener('click', () => {
+        macrosDialog.classList.remove('active');
+        macrosOverlay.classList.remove('active');
+        macroSearchQuery = '';
+        selectedMacroIndex = 0;
+        document.getElementById('macro-search-query').textContent = '';
+    });
+}
+
+if (macrosOverlay) {
+    macrosOverlay.addEventListener('click', () => {
+        macrosDialog.classList.remove('active');
+        macrosOverlay.classList.remove('active');
+        macroSearchQuery = '';
+        selectedMacroIndex = 0;
+        document.getElementById('macro-search-query').textContent = '';
+    });
+}
+
+function handleMacrosKeydown(e) {
+    if (!macrosDialog || !macrosDialog.classList.contains('active')) return false;
+
+    if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        selectedMacroIndex = Math.min(selectedMacroIndex + 1, filteredMacros.length - 1);
+        renderMacros(filteredMacros);
+        return true;
+    }
+    if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        selectedMacroIndex = Math.max(selectedMacroIndex - 1, 0);
+        renderMacros(filteredMacros);
+        return true;
+    }
+    if (e.key === 'Enter') {
+        e.preventDefault();
+        if (filteredMacros.length > 0) runMacro(filteredMacros[selectedMacroIndex].name);
+        return true;
+    }
+    if (e.key === 'Escape') {
+        e.preventDefault();
+        macrosDialog.classList.remove('active');
+        macrosOverlay.classList.remove('active');
+        macroSearchQuery = '';
+        selectedMacroIndex = 0;
+        document.getElementById('macro-search-query').textContent = '';
+        return true;
+    }
+    if (e.key === 'Backspace') {
+        e.preventDefault();
+        macroSearchQuery = macroSearchQuery.slice(0, -1);
+        performMacroSearch(macroSearchQuery);
+        return true;
+    }
+    if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        e.preventDefault();
+        macroSearchQuery += e.key;
+        performMacroSearch(macroSearchQuery);
+        return true;
+    }
     return false;
 }
 

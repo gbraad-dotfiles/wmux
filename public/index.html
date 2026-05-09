@@ -78,6 +78,7 @@
             <button class="hamburger-button" id="menu-btn">☰</button>
             <div class="banner-title">wmux</div>
             <div id="xpra-app-buttons"></div>
+            <button class="controls-button" id="macros-btn" style="display: none;"><span class="btn-full">Macros</span><span class="btn-short">M</span></button>
             <button class="controls-button" id="apps-btn" style="display: none;"><span class="btn-full">Apps</span><span class="btn-short">A</span></button>
             <button class="controls-button" id="controls-btn" style="display: none;"><span class="btn-full">Panes</span><span class="btn-short">P</span></button>
             <button class="controls-button" id="windows-btn" style="display: none;"><span class="btn-full">Windows</span><span class="btn-short">W</span></button>
@@ -263,6 +264,25 @@
                     <input type="text" id="host-url-input" placeholder="https://100.65.21.100:2022" />
                 </div>
                 <button class="control-btn" id="add-host-submit" style="background: var(--accent); border-color: var(--accent); width: 100%; margin-top: 10px;">Add Host</button>
+            </div>
+        </div>
+
+        <div class="dialog-overlay" id="macros-overlay"></div>
+        <div class="dialog" id="macros-dialog">
+            <div class="dialog-header">
+                <div class="dialog-title">Macros</div>
+                <button class="dialog-close" id="close-macros">×</button>
+            </div>
+            <div class="dialog-content">
+                <div class="control-section">
+                    <div class="control-section-label">
+                        Shell Aliases
+                        <span id="macro-search-query" style="margin-left: 10px; color: #0066FF; font-size: 0.9em; font-weight: normal;"></span>
+                    </div>
+                    <div id="macros-list" style="height: 400px; min-height: 400px; max-height: 400px; overflow-y: auto; border: 1px solid var(--border); border-radius: 4px; background: var(--bg-tertiary);">
+                        <div style="padding: 20px; text-align: center; color: var(--text-secondary);">Loading macros...</div>
+                    </div>
+                </div>
             </div>
         </div>
 

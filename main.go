@@ -67,6 +67,47 @@ var upgrader = websocket.Upgrader{
 
 var appsManager *AppsManager
 
+type Alias struct {
+	Name    string `json:"name"`
+	Command string `json:"command"`
+}
+
+var (
+	aliasesCache []*Alias
+	aliasesMu    sync.Mutex
+)
+
+func loadAliasesCache() {
+	shell := os.Getenv("SHELL")
+	if shell == "" {
+		return
+	}
+	cmd := exec.Command(shell, "-i", "-c", "alias")
+	cmd.Env = os.Environ()
+	output, err := cmd.Output()
+	if err != nil {
+		return
+	}
+	aliases := make([]*Alias, 0)
+	for _, line := range strings.Split(string(output), "\n") {
+		line = strings.TrimSpace(line)
+		line = strings.TrimPrefix(line, "alias ")
+		eqIdx := strings.Index(line, "=")
+		if eqIdx < 1 {
+			continue
+		}
+		name := strings.TrimSpace(line[:eqIdx])
+		command := strings.Trim(strings.TrimSpace(line[eqIdx+1:]), "'\"")
+		if name != "" && command != "" {
+			aliases = append(aliases, &Alias{Name: name, Command: command})
+		}
+	}
+	aliasesMu.Lock()
+	aliasesCache = aliases
+	aliasesMu.Unlock()
+	log.Printf("Loaded %d aliases", len(aliases))
+}
+
 type Message struct {
 	Type       string        `json:"type"`
 	Data       string        `json:"data,omitempty"`
@@ -79,6 +120,7 @@ type Message struct {
 	NewSession bool          `json:"newSession,omitempty"`
 	Windows    []TmuxWindow  `json:"windows,omitempty"`
 	Apps       []*AppSummary `json:"apps,omitempty"`
+	Aliases    []*Alias      `json:"aliases,omitempty"`
 	Index      int           `json:"index,omitempty"`
 }
 
@@ -855,6 +897,15 @@ func makeWebSocketHandler(defaultSession string) http.HandlerFunc {
 				session = nil
 			}
 
+		case "list_aliases":
+			// Serve from cache immediately
+			aliasesMu.Lock()
+			cached := aliasesCache
+			aliasesMu.Unlock()
+			safeWriteJSON(Message{Type: "aliases", Aliases: cached})
+			// Refresh cache in background
+			go loadAliasesCache()
+
 		case "get_clipboard":
 			if session != nil {
 				// Try to get tmux selection - check if in copy mode
@@ -1188,6 +1239,9 @@ func main() {
 	}
 
 	log.Printf("wmux v%s - Web-based tmux Controller\n", Version)
+
+	// Pre-load aliases cache in background
+	go loadAliasesCache()
 
 	var bindAddr string
 
