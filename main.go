@@ -150,6 +150,19 @@ func (ts *TmuxSession) start(attach bool, rows, cols int) error {
 	var args []string
 
 	if attach {
+		// Check if session exists, create it if not
+		check := exec.Command("tmux", "has-session", "-t", ts.sessionID)
+		if check.Run() != nil {
+			// Session doesn't exist - create it
+			log.Printf("Session '%s' not found, creating it", ts.sessionID)
+			create := exec.Command("tmux", "new-session", "-d", "-s", ts.sessionID,
+				"-x", fmt.Sprintf("%d", cols),
+				"-y", fmt.Sprintf("%d", rows),
+			)
+			if err := create.Run(); err != nil {
+				return fmt.Errorf("failed to create session '%s': %v", ts.sessionID, err)
+			}
+		}
 		args = []string{"attach-session", "-t", ts.sessionID}
 	} else {
 		args = []string{
@@ -1242,6 +1255,14 @@ func main() {
 
 	// Pre-load aliases cache in background
 	go loadAliasesCache()
+
+	// Ensure default session exists
+	if *defaultSession != "" {
+		if err := exec.Command("tmux", "has-session", "-t", *defaultSession).Run(); err != nil {
+			log.Printf("Creating default tmux session '%s'", *defaultSession)
+			exec.Command("tmux", "new-session", "-d", "-s", *defaultSession).Run()
+		}
+	}
 
 	var bindAddr string
 
