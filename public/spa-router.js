@@ -96,8 +96,8 @@ async function route() {
     // Always show terminal view
     showView('terminal');
 
-    // In multi-host mode, check for auto-connect or show hosts dialog
-    if (appConfig.multiHost && !hostParam) {
+    // Check for auto-connect (works regardless of multiHost mode)
+    if (!hostParam) {
         const autoConnectHost = localStorage.getItem('wmux_auto_connect_host');
         const currentServer = `${window.location.protocol}//${window.location.host}`;
 
@@ -112,8 +112,14 @@ async function route() {
         if (autoConnectHost && autoConnectHost === currentServer) {
             console.log('Auto-connect to current server - initApp will handle connection');
             // Do nothing - initApp() will connect normally
-            return;
         }
+    }
+
+    // In multi-host mode, show hosts dialog if no backend
+    if (appConfig.multiHost && !hostParam) {
+        const autoConnectHost = localStorage.getItem('wmux_auto_connect_host');
+        const currentServer = `${window.location.protocol}//${window.location.host}`;
+        if (autoConnectHost) return;
 
         // No auto-connect configured - check if backend exists
         let hasBackend = false;
