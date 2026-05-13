@@ -2739,7 +2739,11 @@ async function initApp() {
     // Only connect if:
     // 1. There's a host parameter (explicit connection to different host)
     // 2. OR backend is available on current server
-    if (hostParam || hasBackend) {
+    // 3. OR already connected (e.g. auto-connect from hosts dialog)
+    if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
+        // Already connected or connecting via auto-connect - don't interfere
+        restoreXpraSessions();
+    } else if (hostParam || hasBackend) {
         connect();
         restoreXpraSessions();
     } else {

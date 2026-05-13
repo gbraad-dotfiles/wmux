@@ -69,9 +69,16 @@ add_custom_target(rpm
 
 # Android build target
 add_custom_target(android
-    COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/build-android.sh
+    COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/scripts/build-android.sh
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
     COMMENT "Building Android APK"
+)
+
+# ARM64 build target (Raspberry Pi / Ampere)
+add_custom_target(arm64
+    COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/scripts/build-arm64.sh wmux-arm64
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+    COMMENT "Building ARM64 binary (raspi/ampere)"
 )
 
 # Version info
