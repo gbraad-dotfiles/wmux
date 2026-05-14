@@ -1743,9 +1743,9 @@ function runMacro(name) {
     selectedMacroIndex = 0;
     document.getElementById('macro-search-query').textContent = '';
 
-    // Send the alias command to the terminal
+    // Send the alias name as terminal input (base64-encoded like onData)
     if (ws && ws.readyState === WebSocket.OPEN) {
-        send({ type: 'input', data: alias.name + '\r' });
+        send({ type: 'input', data: btoa(alias.name + '\r') });
     }
 }
 
