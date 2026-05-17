@@ -389,10 +389,27 @@ async function initHostSelector() {
 
 async function addHost() {
     const name = document.getElementById('host-name-input').value.trim();
-    const url = document.getElementById('host-url-input').value.trim();
+    let url = document.getElementById('host-url-input').value.trim();
 
     if (!name || !url) {
         alert('Please enter both name and URL');
+        return;
+    }
+
+    // Auto-prefix: Add https:// if not already present
+    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+        url = 'https://' + url;
+    }
+    
+    // Add :2022 if no port is specified
+    try {
+        const urlObj = new URL(url);
+        if (!urlObj.port) {
+            url += ':2022';
+        }
+    } catch (err) {
+        // Invalid URL format
+        alert('Invalid URL format');
         return;
     }
 
