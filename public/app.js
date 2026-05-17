@@ -2547,14 +2547,23 @@ async function connectToMachine(machineName) {
 }
 
 function performMachineSearch(query) {
-    const searchQuery = query.toLowerCase();
+    machineSearchQuery = query;
     document.getElementById('machine-search-query').textContent = query ? `"${query}"` : '';
-    
-    filteredMachines = machines.filter(machine =>
-        machine.name.toLowerCase().includes(searchQuery)
-    );
-    
-    selectedMachineIndex = Math.min(selectedMachineIndex, Math.max(0, filteredMachines.length - 1));
+
+    if (!query) {
+        selectedMachineIndex = 0;
+        renderMachines(machines);
+        return;
+    }
+
+    filteredMachines = machines.map(machine => {
+        const match = fuzzyMatch(query, machine.name);
+        return { machine, match: match.match, score: match.score };
+    }).filter(r => r.match)
+      .sort((a, b) => b.score - a.score)
+      .map(r => r.machine);
+
+    selectedMachineIndex = 0;
     renderMachines(filteredMachines);
 }
 
@@ -2816,14 +2825,23 @@ async function connectToDevenv(devenvName) {
 }
 
 function performDevenvSearch(query) {
-    const searchQuery = query.toLowerCase();
+    devenvSearchQuery = query;
     document.getElementById('devenv-search-query').textContent = query ? `"${query}"` : '';
-    
-    filteredDevenvs = devenvs.filter(devenv =>
-        devenv.name.toLowerCase().includes(searchQuery)
-    );
-    
-    selectedDevenvIndex = Math.min(selectedDevenvIndex, Math.max(0, filteredDevenvs.length - 1));
+
+    if (!query) {
+        selectedDevenvIndex = 0;
+        renderDevenvs(devenvs);
+        return;
+    }
+
+    filteredDevenvs = devenvs.map(devenv => {
+        const match = fuzzyMatch(query, devenv.name);
+        return { devenv, match: match.match, score: match.score };
+    }).filter(r => r.match)
+      .sort((a, b) => b.score - a.score)
+      .map(r => r.devenv);
+
+    selectedDevenvIndex = 0;
     renderDevenvs(filteredDevenvs);
 }
 
