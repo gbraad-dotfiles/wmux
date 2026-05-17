@@ -122,12 +122,32 @@ type Message struct {
 	Apps       []*AppSummary `json:"apps,omitempty"`
 	Aliases    []*Alias      `json:"aliases,omitempty"`
 	Index      int           `json:"index,omitempty"`
+	Prefix     []string      `json:"prefix,omitempty"` // For DirectSession
+	Target     string        `json:"target,omitempty"` // For DirectSession
 }
 
 type TmuxWindow struct {
 	Index  int    `json:"index"`
 	Name   string `json:"name"`
 	Active bool   `json:"active"`
+}
+
+// Session interface for both TmuxSession and DirectSession
+type Session interface {
+	sendInput(data string) error
+	resize(rows, cols int) error
+	close()
+	listWindows() ([]TmuxWindow, error)
+	selectWindow(index int) error
+	renameWindow(index int, name string) error
+	newWindow() error
+	nextWindow() error
+	prevWindow() error
+	killWindow(index int) error
+	splitHorizontal() error
+	splitVertical() error
+	killPane() error
+	zoomPane() error
 }
 
 type TmuxSession struct {
@@ -361,6 +381,240 @@ func (ts *TmuxSession) killPane() error {
 
 func (ts *TmuxSession) zoomPane() error {
 	cmd := exec.Command("tmux", "resize-pane", "-Z", "-t", ts.sessionID)
+	return cmd.Run()
+}
+
+// DirectSession represents a direct connection to a container/VM tmux session
+type DirectSession struct {
+	cmd       *exec.Cmd
+	ptmx      *os.File
+	ws        *websocket.Conn
+	wsMu      *sync.Mutex
+	sessionID string
+	prefix    []string // Command prefix (e.g., ["podman", "exec", "-it", "dotfedorasys"])
+	target    string   // Target session name in container (e.g., "screen")
+}
+
+func (ds *DirectSession) start(rows, cols int) error {
+	// Ensure minimum size
+	if rows < 24 {
+		rows = 24
+	}
+	if cols < 80 {
+		cols = 80
+	}
+
+	// First, check if target session exists, create if it doesn't
+	checkArgs := append(ds.prefix, "tmux", "has-session", "-t", ds.target)
+	checkCmd := exec.Command(checkArgs[0], checkArgs[1:]...)
+	if err := checkCmd.Run(); err != nil {
+		// Session doesn't exist, create it
+		log.Printf("Session '%s' not found in container, creating it", ds.target)
+		createArgs := append(ds.prefix, "tmux", "new-session", "-d", "-s", ds.target,
+			"-x", fmt.Sprintf("%d", cols),
+			"-y", fmt.Sprintf("%d", rows))
+		createCmd := exec.Command(createArgs[0], createArgs[1:]...)
+		if err := createCmd.Run(); err != nil {
+			return fmt.Errorf("failed to create session '%s': %v", ds.target, err)
+		}
+	}
+
+	// Build command: <prefix> tmux attach -t <target>
+	args := append(ds.prefix, "tmux", "attach", "-t", ds.target)
+	
+	log.Printf("Starting DirectSession: %v", args)
+	ds.cmd = exec.Command(args[0], args[1:]...)
+
+	// Set proper environment
+	env := append(os.Environ(),
+		"TERM=screen-256color",
+		"LANG=en_US.UTF-8",
+		"LC_ALL=en_US.UTF-8",
+		"COLORTERM=truecolor",
+	)
+	ds.cmd.Env = env
+
+	var err error
+	ds.ptmx, err = pty.Start(ds.cmd)
+	if err != nil {
+		return fmt.Errorf("failed to start PTY: %v", err)
+	}
+
+	// Set PTY size
+	winsize := &pty.Winsize{
+		Rows: uint16(rows),
+		Cols: uint16(cols),
+		X:    0,
+		Y:    0,
+	}
+
+	log.Printf("Setting DirectSession PTY size: cols=%d, rows=%d\n", cols, rows)
+	if err := pty.Setsize(ds.ptmx, winsize); err != nil {
+		log.Println("Failed to set PTY size:", err)
+	}
+
+	// Start reading output
+	go ds.readOutput()
+
+	// Send attached notification
+	ds.wsMu.Lock()
+	if ds.ws != nil {
+		ds.ws.WriteJSON(Message{Type: "attached", Session: ds.sessionID})
+	}
+	ds.wsMu.Unlock()
+
+	return nil
+}
+
+func (ds *DirectSession) readOutput() {
+	buf := make([]byte, 8192)
+	for {
+		n, err := ds.ptmx.Read(buf)
+		if err != nil {
+			if err != io.EOF {
+				log.Println("DirectSession read error:", err)
+			}
+			break
+		}
+
+		if n > 0 {
+			ds.wsMu.Lock()
+			if ds.ws != nil {
+				if err := ds.ws.WriteMessage(websocket.BinaryMessage, buf[:n]); err != nil {
+					log.Println("DirectSession WebSocket write error:", err)
+					ds.wsMu.Unlock()
+					break
+				}
+			}
+			ds.wsMu.Unlock()
+		}
+	}
+
+	// Notify close
+	ds.wsMu.Lock()
+	if ds.ws != nil {
+		ds.ws.WriteJSON(Message{Type: "close"})
+	}
+	ds.wsMu.Unlock()
+}
+
+func (ds *DirectSession) sendInput(data string) error {
+	decoded, err := base64.StdEncoding.DecodeString(data)
+	if err != nil {
+		return err
+	}
+	_, err = ds.ptmx.Write(decoded)
+	return err
+}
+
+func (ds *DirectSession) resize(rows, cols int) error {
+	winsize := &pty.Winsize{
+		Rows: uint16(rows),
+		Cols: uint16(cols),
+		X:    0,
+		Y:    0,
+	}
+	return pty.Setsize(ds.ptmx, winsize)
+}
+
+func (ds *DirectSession) close() {
+	if ds.ptmx != nil {
+		ds.ptmx.Close()
+	}
+	if ds.cmd != nil && ds.cmd.Process != nil {
+		ds.cmd.Process.Kill()
+	}
+}
+
+// Tmux control methods for DirectSession - execute commands through container
+func (ds *DirectSession) listWindows() ([]TmuxWindow, error) {
+	// Build command: <prefix> tmux list-windows -t <target> -F '#{window_index}:#{window_name}:#{window_active}'
+	args := append(ds.prefix, "tmux", "list-windows", "-t", ds.target, "-F", "#{window_index}:#{window_name}:#{window_active}")
+	
+	cmd := exec.Command(args[0], args[1:]...)
+	output, err := cmd.Output()
+	if err != nil {
+		return nil, err
+	}
+
+	windows := []TmuxWindow{}
+	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
+	for _, line := range lines {
+		if line == "" {
+			continue
+		}
+		parts := strings.Split(line, ":")
+		if len(parts) >= 3 {
+			index := 0
+			fmt.Sscanf(parts[0], "%d", &index)
+			windows = append(windows, TmuxWindow{
+				Index:  index,
+				Name:   parts[1],
+				Active: parts[2] == "1",
+			})
+		}
+	}
+
+	return windows, nil
+}
+
+func (ds *DirectSession) selectWindow(index int) error {
+	args := append(ds.prefix, "tmux", "select-window", "-t", fmt.Sprintf("%s:%d", ds.target, index))
+	cmd := exec.Command(args[0], args[1:]...)
+	return cmd.Run()
+}
+
+func (ds *DirectSession) renameWindow(index int, name string) error {
+	args := append(ds.prefix, "tmux", "rename-window", "-t", fmt.Sprintf("%s:%d", ds.target, index), name)
+	cmd := exec.Command(args[0], args[1:]...)
+	return cmd.Run()
+}
+
+func (ds *DirectSession) newWindow() error {
+	args := append(ds.prefix, "tmux", "new-window", "-t", ds.target)
+	cmd := exec.Command(args[0], args[1:]...)
+	return cmd.Run()
+}
+
+func (ds *DirectSession) nextWindow() error {
+	args := append(ds.prefix, "tmux", "next-window", "-t", ds.target)
+	cmd := exec.Command(args[0], args[1:]...)
+	return cmd.Run()
+}
+
+func (ds *DirectSession) prevWindow() error {
+	args := append(ds.prefix, "tmux", "previous-window", "-t", ds.target)
+	cmd := exec.Command(args[0], args[1:]...)
+	return cmd.Run()
+}
+
+func (ds *DirectSession) killWindow(index int) error {
+	args := append(ds.prefix, "tmux", "kill-window", "-t", fmt.Sprintf("%s:%d", ds.target, index))
+	cmd := exec.Command(args[0], args[1:]...)
+	return cmd.Run()
+}
+
+func (ds *DirectSession) splitHorizontal() error {
+	args := append(ds.prefix, "tmux", "split-window", "-h", "-t", ds.target)
+	cmd := exec.Command(args[0], args[1:]...)
+	return cmd.Run()
+}
+
+func (ds *DirectSession) splitVertical() error {
+	args := append(ds.prefix, "tmux", "split-window", "-v", "-t", ds.target)
+	cmd := exec.Command(args[0], args[1:]...)
+	return cmd.Run()
+}
+
+func (ds *DirectSession) killPane() error {
+	args := append(ds.prefix, "tmux", "kill-pane", "-t", ds.target)
+	cmd := exec.Command(args[0], args[1:]...)
+	return cmd.Run()
+}
+
+func (ds *DirectSession) zoomPane() error {
+	args := append(ds.prefix, "tmux", "resize-pane", "-Z", "-t", ds.target)
+	cmd := exec.Command(args[0], args[1:]...)
 	return cmd.Run()
 }
 
@@ -813,7 +1067,19 @@ func makeWebSocketHandler(defaultSession string) http.HandlerFunc {
 		defer ws.Close()
 
 		var session *TmuxSession
+		var directSession *DirectSession
 		var wsMu sync.Mutex // Mutex to protect websocket writes
+
+		// Helper to get active session as interface
+		getSession := func() Session {
+			if directSession != nil {
+				return directSession
+			}
+			if session != nil {
+				return session
+			}
+			return nil
+		}
 
 		// Helper function for safe websocket writes
 		safeWriteJSON := func(msg Message) error {
@@ -902,16 +1168,65 @@ func makeWebSocketHandler(defaultSession string) http.HandlerFunc {
 				session = nil
 			}
 
-		case "input":
+		case "start_direct":
+			// Direct connection to container/VM tmux
+			sessionName := msg.Session
+			if sessionName == "" {
+				sessionName = fmt.Sprintf("wmux_direct_%d", os.Getpid())
+			}
+
+			// Close existing session if any
 			if session != nil {
-				if err := session.sendInput(msg.Data); err != nil {
+				session.close()
+				session = nil
+			}
+			if directSession != nil {
+				directSession.close()
+				directSession = nil
+			}
+
+			// msg.Prefix contains the exec command prefix
+			// msg.Target contains the target tmux session name (default: "screen")
+			target := msg.Target
+			if target == "" {
+				target = "screen"
+			}
+
+			directSession = &DirectSession{
+				ws:        ws,
+				wsMu:      &wsMu,
+				sessionID: sessionName,
+				prefix:    msg.Prefix,
+				target:    target,
+			}
+
+			rows := msg.Rows
+			cols := msg.Cols
+			if rows == 0 {
+				rows = 24
+			}
+			if cols == 0 {
+				cols = 80
+			}
+
+			if err := directSession.start(rows, cols); err != nil {
+				log.Println("Start direct error:", err)
+				safeWriteJSON(Message{Type: "error", Data: err.Error()})
+				directSession = nil
+			}
+
+		case "input":
+			activeSession := getSession()
+			if activeSession != nil {
+				if err := activeSession.sendInput(msg.Data); err != nil {
 					log.Println("Input error:", err)
 				}
 			}
 
 		case "resize":
-			if session != nil && msg.Rows > 0 && msg.Cols > 0 {
-				if err := session.resize(msg.Rows, msg.Cols); err != nil {
+			activeSession := getSession()
+			if activeSession != nil && msg.Rows > 0 && msg.Cols > 0 {
+				if err := activeSession.resize(msg.Rows, msg.Cols); err != nil {
 					log.Println("Resize error:", err)
 				}
 			}
@@ -921,6 +1236,11 @@ func makeWebSocketHandler(defaultSession string) http.HandlerFunc {
 				session.close()
 				safeWriteJSON(Message{Type: "close"})
 				session = nil
+			}
+			if directSession != nil {
+				directSession.close()
+				safeWriteJSON(Message{Type: "close"})
+				directSession = nil
 			}
 
 		case "list_aliases":
@@ -954,8 +1274,9 @@ func makeWebSocketHandler(defaultSession string) http.HandlerFunc {
 			}
 
 		case "list_windows":
-			if session != nil {
-				windows, err := session.listWindows()
+			activeSession := getSession()
+			if activeSession != nil {
+				windows, err := activeSession.listWindows()
 				if err != nil {
 					log.Println("List windows error:", err)
 					safeWriteJSON(Message{Type: "error", Data: err.Error()})
@@ -965,80 +1286,90 @@ func makeWebSocketHandler(defaultSession string) http.HandlerFunc {
 			}
 
 		case "select_window":
-			if session != nil {
-				if err := session.selectWindow(msg.Index); err != nil {
+			activeSession := getSession()
+			if activeSession != nil {
+				if err := activeSession.selectWindow(msg.Index); err != nil {
 					log.Println("Select window error:", err)
 					safeWriteJSON(Message{Type: "error", Data: err.Error()})
 				}
 			}
 
 		case "rename_window":
-			if session != nil {
-				if err := session.renameWindow(msg.Index, msg.Data); err != nil {
+			activeSession := getSession()
+			if activeSession != nil {
+				if err := activeSession.renameWindow(msg.Index, msg.Data); err != nil {
 					log.Println("Rename window error:", err)
 					safeWriteJSON(Message{Type: "error", Data: err.Error()})
 				}
 			}
 
 		case "new_window":
-			if session != nil {
-				if err := session.newWindow(); err != nil {
+			activeSession := getSession()
+			if activeSession != nil {
+				if err := activeSession.newWindow(); err != nil {
 					log.Println("New window error:", err)
 					safeWriteJSON(Message{Type: "error", Data: err.Error()})
 				}
 			}
 
 		case "next_window":
-			if session != nil {
-				if err := session.nextWindow(); err != nil {
+			activeSession := getSession()
+			if activeSession != nil {
+				if err := activeSession.nextWindow(); err != nil {
 					log.Println("Next window error:", err)
 					safeWriteJSON(Message{Type: "error", Data: err.Error()})
 				}
 			}
 
 		case "prev_window":
-			if session != nil {
-				if err := session.prevWindow(); err != nil {
+			activeSession := getSession()
+			if activeSession != nil {
+				if err := activeSession.prevWindow(); err != nil {
 					log.Println("Previous window error:", err)
 					safeWriteJSON(Message{Type: "error", Data: err.Error()})
 				}
 			}
 
 		case "kill_window":
-			if session != nil {
-				if err := session.killWindow(msg.Index); err != nil {
+			activeSession := getSession()
+			if activeSession != nil {
+				if err := activeSession.killWindow(msg.Index); err != nil {
 					log.Println("Kill window error:", err)
 					safeWriteJSON(Message{Type: "error", Data: err.Error()})
 				}
 			}
 
 		case "split_horizontal":
-			if session != nil {
-				if err := session.splitHorizontal(); err != nil {
+			activeSession := getSession()
+			if activeSession != nil {
+				if err := activeSession.splitHorizontal(); err != nil {
 					log.Println("Split horizontal error:", err)
 					safeWriteJSON(Message{Type: "error", Data: err.Error()})
 				}
 			}
 
 		case "split_vertical":
-			if session != nil {
-				if err := session.splitVertical(); err != nil {
+			activeSession := getSession()
+			if activeSession != nil {
+				if err := activeSession.splitVertical(); err != nil {
 					log.Println("Split vertical error:", err)
 					safeWriteJSON(Message{Type: "error", Data: err.Error()})
 				}
 			}
 
 		case "kill_pane":
-			if session != nil {
-				if err := session.killPane(); err != nil {
+			activeSession := getSession()
+			if activeSession != nil {
+				if err := activeSession.killPane(); err != nil {
 					log.Println("Kill pane error:", err)
 					safeWriteJSON(Message{Type: "error", Data: err.Error()})
 				}
 			}
 
 		case "zoom_pane":
-			if session != nil {
-				if err := session.zoomPane(); err != nil {
+			activeSession := getSession()
+			if activeSession != nil {
+				if err := activeSession.zoomPane(); err != nil {
 					log.Println("Zoom pane error:", err)
 					safeWriteJSON(Message{Type: "error", Data: err.Error()})
 				}
@@ -1438,6 +1769,72 @@ func handleConnectDevenv(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// handleMachineExecPrefix returns the command prefix for executing tmux commands in a machine
+func handleMachineExecPrefix(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	name := r.URL.Query().Get("name")
+	if name == "" {
+		http.Error(w, "Machine name required", http.StatusBadRequest)
+		return
+	}
+
+	// Machine uses SSH, need to parse config from ~/.config/containers/macadam/machine/qemu/{name}.json
+	// For now, return basic SSH command
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"prefix": []string{"ssh", name},
+		"type":   "machine",
+	})
+}
+
+// handleDevenvExecPrefix returns the command prefix for executing tmux commands in a devenv
+func handleDevenvExecPrefix(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	name := r.URL.Query().Get("name")
+	if name == "" {
+		http.Error(w, "Devenv name required", http.StatusBadRequest)
+		return
+	}
+
+	// Get runtime (podman, nerdctl, etc.)
+	shell := os.Getenv("SHELL")
+	if shell == "" {
+		shell = "/bin/zsh"
+	}
+
+	cmd := exec.Command(shell, "-i", "-c", "source ~/.dotfiles/zsh/.zshrc.d/devenv.zsh && _devenv_runtime")
+	output, err := cmd.Output()
+	runtime := "podman"
+	if err == nil {
+		runtime = strings.TrimSpace(string(output))
+		if runtime == "" {
+			runtime = "podman"
+		}
+	}
+
+	// Get the user for the container
+	userCmd := exec.Command(shell, "-i", "-c", "dotini devenv --get devenv.user")
+	userOutput, err := userCmd.Output()
+	user := "gbraad" // default fallback
+	if err == nil {
+		user = strings.TrimSpace(string(userOutput))
+		if user == "" {
+			user = "gbraad"
+		}
+	}
+
+	// Container name is {name}sys
+	containerName := name + "sys"
+
+	// Use -it for proper TTY, and sudo to run as correct user
+	// The command will be: podman exec -it dotfedorasys sudo -i -u gbraad tmux attach -t screen
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"prefix": []string{runtime, "exec", "-it", containerName, "sudo", "-i", "-u", user},
+		"type":   "devenv",
+	})
+}
+
 // readerConn wraps a net.Conn with a bufio.Reader
 func main() {
 	// Command line flags
@@ -1584,11 +1981,13 @@ func main() {
 	http.HandleFunc("/api/machines", handleListMachines)
 	http.HandleFunc("/api/machines/prefixes", handleListMachinePrefixes)
 	http.HandleFunc("/api/machines/connect", handleConnectMachine)
+	http.HandleFunc("/api/machines/exec-prefix", handleMachineExecPrefix)
 
 	// Devenvs API endpoints
 	http.HandleFunc("/api/devenvs", handleListDevenvs)
 	http.HandleFunc("/api/devenvs/prefixes", handleListDevenvPrefixes)
 	http.HandleFunc("/api/devenvs/connect", handleConnectDevenv)
+	http.HandleFunc("/api/devenvs/exec-prefix", handleDevenvExecPrefix)
 
 	// Apps functionality (if enabled)
 	if !*noApps {

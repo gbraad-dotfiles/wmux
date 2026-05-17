@@ -1930,6 +1930,11 @@ function handleWindowsKeydown(e) {
     // = or + = new window
     if (e.key === '=' || e.key === '+') {
         e.preventDefault();
+        // Close windows dialog
+        document.getElementById('windows-dialog')?.classList.remove('active');
+        document.getElementById('windows-overlay')?.classList.remove('active');
+        windowSearchQuery = '';
+        selectedWindowIndex = 0;
         send({ type: 'new_window' });
         // Refresh window list to show new window
         setTimeout(() => send({ type: 'list_windows' }), 100);
@@ -2422,6 +2427,15 @@ function renderMachinePrefixes(prefixes) {
 
 async function createMachineFromPrefix(prefix) {
     try {
+        // Get exec prefix for this machine type
+        const response = await fetch(`/api/machines/exec-prefix?name=${encodeURIComponent(prefix)}`);
+        const data = await response.json();
+        
+        if (!data.prefix) {
+            console.error('Failed to get machine exec prefix');
+            return;
+        }
+
         const sessionName = `machine-${prefix}`;
         
         // Disconnect from current session if connected
@@ -2441,7 +2455,14 @@ async function createMachineFromPrefix(prefix) {
         setTimeout(() => {
             console.log(`Creating machine ${prefix} - cols: ${term.cols}, rows: ${term.rows}`);
             
-            // Start a new session with the machine start && screen command
+            // First start the machine, then connect
+            // We'll execute the start command via the exec prefix
+            const startPrefix = data.prefix.slice(0, data.prefix.length - 1); // Remove container name
+            const startCommand = `machine ${prefix} start`;
+            
+            // For now, use start_direct directly to the screen session
+            // The machine start should be handled by the user beforehand or we need a different approach
+            // Let's use the traditional approach with tmux session that runs the start && screen command
             send({
                 type: 'start',
                 session: sessionName,
@@ -2461,6 +2482,28 @@ async function createMachineFromPrefix(prefix) {
 
 async function connectToMachine(machineName) {
     try {
+        // Close dialog immediately
+        machinesDialog.classList.remove('active');
+        machinesOverlay.classList.remove('active');
+        machineSearchQuery = '';
+        selectedMachineIndex = 0;
+        
+        // Show connecting message
+        term.reset();
+        term.clear();
+        term.write(`\x1b[1;36mConnecting to machine ${machineName}...\x1b[0m\r\n`);
+        term.write(`\x1b[90mFetching connection info...\x1b[0m\r\n`);
+        
+        // Get exec prefix for this machine
+        const response = await fetch(`/api/machines/exec-prefix?name=${encodeURIComponent(machineName)}`);
+        const data = await response.json();
+        
+        if (!data.prefix) {
+            console.error('Failed to get machine exec prefix');
+            term.write('\x1b[1;31mError: Could not get machine connection info\x1b[0m\r\n');
+            return;
+        }
+
         // The session name for this machine
         const sessionName = `machine-${machineName}`;
         
@@ -2471,8 +2514,7 @@ async function connectToMachine(machineName) {
             currentSessionName = null;
         }
 
-        term.reset();
-        term.clear();
+        term.write(`\x1b[90mEstablishing connection...\x1b[0m\r\n`);
         
         // Ensure terminal is properly sized before starting
         fitAddon.fit();
@@ -2481,23 +2523,26 @@ async function connectToMachine(machineName) {
         setTimeout(() => {
             console.log(`Connecting to machine ${machineName} - cols: ${term.cols}, rows: ${term.rows}`);
             
-            // Attach to existing session, or create with the screen command if it doesn't exist
+            // Use start_direct for direct connection without host tmux nesting
             send({
-                type: 'start',
+                type: 'start_direct',
                 session: sessionName,
-                cmd: `machine ${machineName} screen`,
-                newSession: false, // Try to attach first, create if doesn't exist
+                prefix: data.prefix,
+                target: 'screen',
                 rows: term.rows,
                 cols: term.cols
             });
             
-            machinesDialog.classList.remove('active');
-            machinesOverlay.classList.remove('active');
-            machineSearchQuery = '';
-            selectedMachineIndex = 0;
+            // Set a timeout to detect connection failure
+            setTimeout(() => {
+                if (!sessionActive) {
+                    term.write('\x1b[1;33m\r\nConnection may have failed. Check if machine is running and has a screen session.\x1b[0m\r\n');
+                }
+            }, 5000);
         }, 100);
     } catch (err) {
         console.error('Failed to connect to machine:', err);
+        term.write(`\x1b[1;31m\r\nError: ${err.message}\x1b[0m\r\n`);
     }
 }
 
@@ -2684,7 +2729,7 @@ async function createDevenvFromPrefix(prefix) {
         setTimeout(() => {
             console.log(`Creating devenv ${prefix} - cols: ${term.cols}, rows: ${term.rows}`);
             
-            // Start a new session with the devenv start && screen command
+            // Use traditional start for creation (needs to run start command first)
             send({
                 type: 'start',
                 session: sessionName,
@@ -2704,18 +2749,41 @@ async function createDevenvFromPrefix(prefix) {
 
 async function connectToDevenv(devenvName) {
     try {
-        // The session name for this devenv
-        const sessionName = `devenv-${devenvName}`;
-        
-        // Disconnect from current session if connected
+        // Disconnect from current session FIRST before clearing terminal
         if (sessionActive) {
             send({ type: 'disconnect' });
             sessionActive = false;
             currentSessionName = null;
+            // Wait a bit for disconnect to complete
+            await new Promise(resolve => setTimeout(resolve, 100));
         }
-
+        
+        // Close dialog immediately
+        devenvsDialog.classList.remove('active');
+        devenvsOverlay.classList.remove('active');
+        devenvSearchQuery = '';
+        selectedDevenvIndex = 0;
+        
+        // Now clear and show connecting message
         term.reset();
         term.clear();
+        term.write(`\x1b[1;36mConnecting to devenv ${devenvName}...\x1b[0m\r\n`);
+        term.write(`\x1b[90mFetching connection info...\x1b[0m\r\n`);
+        
+        // Get exec prefix for this devenv
+        const response = await fetch(`/api/devenvs/exec-prefix?name=${encodeURIComponent(devenvName)}`);
+        const data = await response.json();
+        
+        if (!data.prefix) {
+            console.error('Failed to get devenv exec prefix');
+            term.write('\x1b[1;31mError: Could not get devenv connection info\x1b[0m\r\n');
+            return;
+        }
+
+        // The session name for this devenv
+        const sessionName = `devenv-${devenvName}`;
+
+        term.write(`\x1b[90mEstablishing connection...\x1b[0m\r\n`);
         
         // Ensure terminal is properly sized before starting
         fitAddon.fit();
@@ -2724,23 +2792,26 @@ async function connectToDevenv(devenvName) {
         setTimeout(() => {
             console.log(`Connecting to devenv ${devenvName} - cols: ${term.cols}, rows: ${term.rows}`);
             
-            // Attach to existing session, or create with the screen command if it doesn't exist
+            // Use start_direct for direct connection without host tmux nesting
             send({
-                type: 'start',
+                type: 'start_direct',
                 session: sessionName,
-                cmd: `devenv ${devenvName} screen`,
-                newSession: false, // Try to attach first, create if doesn't exist
+                prefix: data.prefix,
+                target: 'screen',
                 rows: term.rows,
                 cols: term.cols
             });
             
-            devenvsDialog.classList.remove('active');
-            devenvsOverlay.classList.remove('active');
-            devenvSearchQuery = '';
-            selectedDevenvIndex = 0;
+            // Set a timeout to detect connection failure
+            setTimeout(() => {
+                if (!sessionActive) {
+                    term.write('\x1b[1;33m\r\nConnection may have failed. Check if devenv is running and has a screen session.\x1b[0m\r\n');
+                }
+            }, 5000);
         }, 100);
     } catch (err) {
         console.error('Failed to connect to devenv:', err);
+        term.write(`\x1b[1;31m\r\nError: ${err.message}\x1b[0m\r\n`);
     }
 }
 
@@ -3164,6 +3235,10 @@ let sessionToKill = null;
 function showConfirmKill(sessionName) {
     sessionToKill = sessionName;
     confirmKillMessage.textContent = `Kill session "${sessionName}"?`;
+    // Close sessions dialog first
+    document.getElementById('sessions-dialog')?.classList.remove('active');
+    document.getElementById('sessions-overlay')?.classList.remove('active');
+    // Show confirm dialog
     confirmKillDialog.classList.add('active');
     confirmKillOverlay.classList.add('active');
 }
