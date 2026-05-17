@@ -3320,6 +3320,9 @@ document.getElementById('split-v').addEventListener('click', () => {
 });
 
 document.getElementById('new-window').addEventListener('click', () => {
+    windowsDialog.classList.remove('active');
+    windowsOverlay.classList.remove('active');
+
     send({ type: 'new_window' });
 });
 
