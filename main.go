@@ -72,9 +72,18 @@ type Alias struct {
 	Command string `json:"command"`
 }
 
+type DevenvExecPrefixCache struct {
+	runtime    string
+	user       string
+	updatedAt  time.Time
+}
+
 var (
 	aliasesCache []*Alias
 	aliasesMu    sync.Mutex
+
+	devenvExecPrefixCache      DevenvExecPrefixCache
+	devenvExecPrefixCacheMu    sync.Mutex
 )
 
 func loadAliasesCache() {
@@ -1797,44 +1806,20 @@ func handleDevenvExecPrefix(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	/*
-	// These calls need to be cached as they are terribly slow
+	devenvExecPrefixCacheMu.Lock()
+	runtime := devenvExecPrefixCache.runtime
+	user := devenvExecPrefixCache.user
+	devenvExecPrefixCacheMu.Unlock()
 
-	// Get runtime (podman, nerdctl, etc.)
-	shell := os.Getenv("SHELL")
-	if shell == "" {
-		shell = "/bin/zsh"
+	if runtime == "" {
+		runtime = "podman"
+	}
+	if user == "" {
+		user = "gbraad"
 	}
 
-	cmd := exec.Command(shell, "-i", "-c", "dotini devenv --get devenv.runtime")
-	output, err := cmd.Output()
-	runtime := "podman"
-	if err == nil {
-		runtime = strings.TrimSpace(string(output))
-		if runtime == "" {
-			runtime = "podman"
-		}
-	}
-
-	// Get the user for the container
-	userCmd := exec.Command(shell, "-i", "-c", "dotini devenv --get devenv.user")
-	userOutput, err := userCmd.Output()
-	user := "gbraad" // default fallback
-	if err == nil {
-		user = strings.TrimSpace(string(userOutput))
-		if user == "" {
-			user = "gbraad"
-		}
-	}
-	*/
-	runtime := "podman"
-	user := "gbraad"
-
-	// Container name is {name}sys
 	containerName := name + "sys"
 
-	// Use -it for proper TTY, and sudo to run as correct user
-	// The command will be: podman exec -it dotfedorasys sudo -i -u gbraad tmux attach -t screen
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"prefix": []string{runtime, "exec", "-it", containerName, "sudo", "-i", "-u", user},
 		"type":   "devenv",
@@ -1842,6 +1827,43 @@ func handleDevenvExecPrefix(w http.ResponseWriter, r *http.Request) {
 }
 
 // readerConn wraps a net.Conn with a bufio.Reader
+var devenvExecPrefixCacheInterval = flag.Duration("devenv-exec-cache-interval", 5*time.Minute, "Interval for refreshing devenv exec prefix cache")
+
+func refreshDevenvExecPrefixCache() {
+	shell := os.Getenv("SHELL")
+	if shell == "" {
+		shell = "/bin/zsh"
+	}
+
+	runtime := "podman"
+	cmd := exec.Command(shell, "-i", "-c", "dotini devenv --get devenv.runtime")
+	output, err := cmd.Output()
+	if err == nil {
+		runtime = strings.TrimSpace(string(output))
+		if runtime == "" {
+			runtime = "podman"
+		}
+	}
+
+	user := "gbraad"
+	userCmd := exec.Command(shell, "-i", "-c", "dotini devenv --get devenv.user")
+	userOutput, err := userCmd.Output()
+	if err == nil {
+		user = strings.TrimSpace(string(userOutput))
+		if user == "" {
+			user = "gbraad"
+		}
+	}
+
+	devenvExecPrefixCacheMu.Lock()
+	devenvExecPrefixCache.runtime = runtime
+	devenvExecPrefixCache.user = user
+	devenvExecPrefixCache.updatedAt = time.Now()
+	devenvExecPrefixCacheMu.Unlock()
+
+	log.Printf("Refreshed devenv exec prefix cache: runtime=%s, user=%s", runtime, user)
+}
+
 func main() {
 	// Command line flags
 	version := flag.Bool("version", false, "Show version information")
@@ -1889,6 +1911,17 @@ func main() {
 
 	// Pre-load aliases cache in background
 	go loadAliasesCache()
+
+	// Pre-load devenv exec prefix cache in background
+	refreshDevenvExecPrefixCache()
+	go func() {
+		ticker := time.NewTicker(*devenvExecPrefixCacheInterval)
+		defer ticker.Stop()
+		for {
+			<-ticker.C
+			refreshDevenvExecPrefixCache()
+		}
+	}()
 
 	// Ensure default session exists
 	if *defaultSession != "" {
