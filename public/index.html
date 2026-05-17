@@ -83,6 +83,8 @@
             <button class="controls-button" id="controls-btn" style="display: none;"><span class="btn-full">Panes</span><span class="btn-short">P</span></button>
             <button class="controls-button" id="windows-btn" style="display: none;"><span class="btn-full">Windows</span><span class="btn-short">W</span></button>
             <button class="controls-button" id="sessions-btn" style="display: none;"><span class="btn-full">Sessions</span><span class="btn-short">S</span></button>
+            <button class="controls-button" id="devenvs-btn" style="display: none;"><span class="btn-full">Devenvs</span><span class="btn-short">D</span></button>
+            <button class="controls-button" id="machines-btn" style="display: none;"><span class="btn-full">Machines</span><span class="btn-short">V</span></button>
             <button class="controls-button" id="hosts-btn" style="display: none;"><span class="btn-full">Hosts</span><span class="btn-short">H</span></button>
             <div class="connection-indicator" id="status">
                 <span class="indicator-dot"></span>
@@ -115,6 +117,8 @@
                         <br>
                         <strong style="color: #aaa;">Shortcuts:</strong><br>
                         Ctrl+Space then A = Apps<br>
+                        Ctrl+Space then D = Devenvs<br>
+                        Ctrl+Space then V = Machines<br>
                         Ctrl+Space then P = Panes<br>
                         Ctrl+Space then W = Windows<br>
                         Ctrl+Space then S = Sessions<br>
@@ -301,6 +305,66 @@
                     <div id="apps-list" style="height: 400px; min-height: 400px; max-height: 400px; overflow-y: auto; border: 1px solid var(--border); border-radius: 4px; background: var(--bg-tertiary);">
                         <div style="padding: 20px; text-align: center; color: var(--text-secondary);">Loading apps...</div>
                     </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="dialog-overlay" id="machines-overlay"></div>
+        <div class="dialog" id="machines-dialog">
+            <div class="dialog-header">
+                <div class="dialog-title">
+                    Machines
+                    <span id="machine-search-query" style="margin-left: 10px; color: #0066FF; font-size: 0.9em; font-weight: normal;"></span>
+                </div>
+                <button class="dialog-close" id="close-machines">×</button>
+            </div>
+            <div class="dialog-content" style="display: flex; flex-direction: column;">
+                <div id="machines-list" style="flex: 1; height: 400px; min-height: 400px; max-height: 400px; overflow-y: auto; border: 1px solid var(--border); border-radius: 4px; background: var(--bg-tertiary); margin-bottom: 15px;">
+                    <div style="padding: 20px; text-align: center; color: var(--text-secondary);">Loading machines...</div>
+                </div>
+                <button id="create-machine-btn" class="control-btn" style="font-size: 1.2em;">+</button>
+            </div>
+        </div>
+
+        <div class="dialog-overlay" id="create-machine-overlay"></div>
+        <div class="dialog" id="create-machine-dialog" style="max-width: 400px;">
+            <div class="dialog-header">
+                <div class="dialog-title">Create Machine</div>
+                <button class="dialog-close" id="close-create-machine">×</button>
+            </div>
+            <div class="dialog-content" style="display: flex; flex-direction: column;">
+                <div id="machine-prefixes-list" style="flex: 1; max-height: 400px; overflow-y: auto; border: 1px solid var(--border); border-radius: 4px; background: var(--bg-tertiary);">
+                    <div style="padding: 20px; text-align: center; color: var(--text-secondary);">Loading prefixes...</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="dialog-overlay" id="devenvs-overlay"></div>
+        <div class="dialog" id="devenvs-dialog">
+            <div class="dialog-header">
+                <div class="dialog-title">
+                    Development Environments
+                    <span id="devenv-search-query" style="margin-left: 10px; color: #0066FF; font-size: 0.9em; font-weight: normal;"></span>
+                </div>
+                <button class="dialog-close" id="close-devenvs">×</button>
+            </div>
+            <div class="dialog-content" style="display: flex; flex-direction: column;">
+                <div id="devenvs-list" style="flex: 1; height: 400px; min-height: 400px; max-height: 400px; overflow-y: auto; border: 1px solid var(--border); border-radius: 4px; background: var(--bg-tertiary); margin-bottom: 15px;">
+                    <div style="padding: 20px; text-align: center; color: var(--text-secondary);">Loading devenvs...</div>
+                </div>
+                <button id="create-devenv-btn" class="control-btn" style="font-size: 1.2em;">+</button>
+            </div>
+        </div>
+
+        <div class="dialog-overlay" id="create-devenv-overlay"></div>
+        <div class="dialog" id="create-devenv-dialog" style="max-width: 400px;">
+            <div class="dialog-header">
+                <div class="dialog-title">Create Devenv</div>
+                <button class="dialog-close" id="close-create-devenv">×</button>
+            </div>
+            <div class="dialog-content" style="display: flex; flex-direction: column;">
+                <div id="devenv-prefixes-list" style="flex: 1; max-height: 400px; overflow-y: auto; border: 1px solid var(--border); border-radius: 4px; background: var(--bg-tertiary);">
+                    <div style="padding: 20px; text-align: center; color: var(--text-secondary);">Loading prefixes...</div>
                 </div>
             </div>
         </div>

@@ -53,10 +53,10 @@ function initTerminal() {
             return false;
         }
 
-        // Intercept command keys after prefix (H, A, W, P, S)
+        // Intercept command keys after prefix (H, A, W, P, S, D, V, M)
         if (prefixKeyPressed) {
             const key = e.key.toLowerCase();
-            if (key === 'h' || key === 'a' || key === 'w' || key === 'p' || key === 's') {
+            if (key === 'h' || key === 'a' || key === 'w' || key === 'p' || key === 's' || key === 'd' || key === 'v' || key === 'm') {
                 // Prevent xterm from processing these keys when prefix is active
                 return false;
             }
@@ -204,6 +204,10 @@ function setupEventListeners() {
             (document.getElementById('macros-dialog')?.classList.contains('active')) ||
             (document.getElementById('windows-dialog')?.classList.contains('active')) ||
             (document.getElementById('sessions-dialog')?.classList.contains('active')) ||
+            (document.getElementById('machines-dialog')?.classList.contains('active')) ||
+            (document.getElementById('devenvs-dialog')?.classList.contains('active')) ||
+            (document.getElementById('create-machine-dialog')?.classList.contains('active')) ||
+            (document.getElementById('create-devenv-dialog')?.classList.contains('active')) ||
             (document.getElementById('controls-dialog')?.classList.contains('active')) ||
             (document.getElementById('confirm-kill-dialog')?.classList.contains('active')) ||
             (document.getElementById('add-host-dialog')?.classList.contains('active')) ||
@@ -240,8 +244,36 @@ function setupEventListeners() {
                 return;
             }
 
+            // Check if machines dialog is handling this event
+            if (handleMachinesKeydown(e)) {
+                e.preventDefault();
+                e.stopPropagation();
+                return;
+            }
+
+            // Check if devenvs dialog is handling this event
+            if (handleDevenvsKeydown(e)) {
+                e.preventDefault();
+                e.stopPropagation();
+                return;
+            }
+
             // Check if sessions dialog is handling this event
             if (handleSessionsKeydown(e)) {
+                e.preventDefault();
+                e.stopPropagation();
+                return;
+            }
+
+            // Check if machine prefix dialog is handling this event
+            if (handleMachinePrefixKeydown(e)) {
+                e.preventDefault();
+                e.stopPropagation();
+                return;
+            }
+
+            // Check if devenv prefix dialog is handling this event
+            if (handleDevenvPrefixKeydown(e)) {
                 e.preventDefault();
                 e.stopPropagation();
                 return;
@@ -414,6 +446,38 @@ function setupEventListeners() {
                     send({ type: 'list' });
                     sessionsDialog.classList.add('active');
                     sessionsOverlay.classList.add('active');
+                }
+                return;
+            }
+
+            // D for Devenvs
+            if (e.key === 'd' || e.key === 'D') {
+                e.preventDefault();
+                e.stopPropagation();
+                const devenvsDialog = document.getElementById('devenvs-dialog');
+                const devenvsOverlay = document.getElementById('devenvs-overlay');
+                if (devenvsDialog && devenvsOverlay) {
+                    devenvSearchQuery = '';
+                    selectedDevenvIndex = 0;
+                    loadDevenvs();
+                    devenvsDialog.classList.add('active');
+                    devenvsOverlay.classList.add('active');
+                }
+                return;
+            }
+
+            // V for Machines (VM)
+            if (e.key === 'v' || e.key === 'V') {
+                e.preventDefault();
+                e.stopPropagation();
+                const machinesDialog = document.getElementById('machines-dialog');
+                const machinesOverlay = document.getElementById('machines-overlay');
+                if (machinesDialog && machinesOverlay) {
+                    machineSearchQuery = '';
+                    selectedMachineIndex = 0;
+                    loadMachines();
+                    machinesDialog.classList.add('active');
+                    machinesOverlay.classList.add('active');
                 }
                 return;
             }
@@ -1120,6 +1184,8 @@ function connect(remoteHost) {
                 // Show controls and windows buttons
                 document.getElementById('macros-btn').style.display = 'block';
                 document.getElementById('apps-btn').style.display = 'block';
+                document.getElementById('devenvs-btn').style.display = 'block';
+                document.getElementById('machines-btn').style.display = 'block';
                 document.getElementById('sessions-btn').style.display = 'block';
                 document.getElementById('controls-btn').style.display = 'block';
                 document.getElementById('windows-btn').style.display = 'block';
@@ -2202,6 +2268,832 @@ if (fontSizeSlider && fontSizeValue) {
             }, 50);
         }, 50);
     });
+}
+
+// Machines dialog
+const machinesBtn = document.getElementById('machines-btn');
+const machinesDialog = document.getElementById('machines-dialog');
+const machinesOverlay = document.getElementById('machines-overlay');
+const closeMachines = document.getElementById('close-machines');
+const createMachineBtn = document.getElementById('create-machine-btn');
+const createMachineDialog = document.getElementById('create-machine-dialog');
+const createMachineOverlay = document.getElementById('create-machine-overlay');
+const closeCreateMachine = document.getElementById('close-create-machine');
+
+let machines = [];
+let filteredMachines = [];
+let selectedMachineIndex = 0;
+let machineSearchQuery = '';
+let machinePrefixes = [];
+let selectedMachinePrefixIndex = 0;
+let machinePrefixSearchQuery = '';
+
+machinesBtn?.addEventListener('click', () => {
+    machinesDialog.classList.add('active');
+    machinesOverlay.classList.add('active');
+    machineSearchQuery = '';
+    selectedMachineIndex = 0;
+    loadMachines();
+    // Pre-load prefixes for faster navigation
+    loadMachinePrefixes();
+});
+
+closeMachines?.addEventListener('click', () => {
+    machinesDialog.classList.remove('active');
+    machinesOverlay.classList.remove('active');
+    machineSearchQuery = '';
+    selectedMachineIndex = 0;
+});
+
+machinesOverlay?.addEventListener('click', () => {
+    machinesDialog.classList.remove('active');
+    machinesOverlay.classList.remove('active');
+    machineSearchQuery = '';
+    selectedMachineIndex = 0;
+});
+
+createMachineBtn?.addEventListener('click', () => {
+    // Close parent dialog
+    machinesDialog.classList.remove('active');
+    machinesOverlay.classList.remove('active');
+    // Open create dialog
+    createMachineDialog.classList.add('active');
+    createMachineOverlay.classList.add('active');
+    // Render already-loaded prefixes
+    renderMachinePrefixes(machinePrefixes);
+    selectedMachinePrefixIndex = 0;
+    machinePrefixSearchQuery = '';
+});
+
+closeCreateMachine?.addEventListener('click', () => {
+    createMachineDialog.classList.remove('active');
+    createMachineOverlay.classList.remove('active');
+});
+
+createMachineOverlay?.addEventListener('click', () => {
+    createMachineDialog.classList.remove('active');
+    createMachineOverlay.classList.remove('active');
+});
+
+async function loadMachines() {
+    try {
+        const response = await fetch('/api/machines');
+        const data = await response.json();
+        machines = data.machines || [];
+        filteredMachines = machines;
+        renderMachines(filteredMachines);
+    } catch (err) {
+        console.error('Failed to load machines:', err);
+        document.getElementById('machines-list').innerHTML = '<div style="padding: 20px; text-align: center; color: var(--text-secondary);">Failed to load machines</div>';
+    }
+}
+
+async function loadMachinePrefixes() {
+    try {
+        const response = await fetch('/api/machines/prefixes');
+        const data = await response.json();
+        const prefixes = data.prefixes || [];
+        renderMachinePrefixes(prefixes);
+    } catch (err) {
+        console.error('Failed to load machine prefixes:', err);
+        document.getElementById('machine-prefixes-list').innerHTML = '<div style="padding: 20px; text-align: center; color: var(--text-secondary);">Failed to load prefixes</div>';
+    }
+}
+
+function renderMachines(machineList) {
+    const list = document.getElementById('machines-list');
+    if (!machineList || machineList.length === 0) {
+        list.innerHTML = '<div style="padding: 20px; text-align: center; color: var(--text-secondary);">No running machines</div>';
+        return;
+    }
+
+    list.innerHTML = machineList.map((machine, idx) => `
+        <div class="list-item ${idx === selectedMachineIndex ? 'selected' : ''}" data-index="${idx}" style="padding: 12px 15px; border-bottom: 1px solid var(--border); cursor: pointer; display: flex; justify-content: space-between; align-items: center;">
+            <div>
+                <span style="font-weight: bold;">${machine.name}</span>
+                <span style="margin-left: 10px; color: var(--text-secondary); font-size: 0.9em;">[${machine.status}]</span>
+            </div>
+        </div>
+    `).join('');
+
+    list.querySelectorAll('.list-item').forEach(item => {
+        item.addEventListener('click', () => {
+            const index = parseInt(item.dataset.index);
+            connectToMachine(machineList[index].name);
+        });
+    });
+}
+
+function renderMachinePrefixes(prefixes) {
+    machinePrefixes = prefixes || [];
+    const list = document.getElementById('machine-prefixes-list');
+    if (machinePrefixes.length === 0) {
+        list.innerHTML = '<div style="padding: 20px; text-align: center; color: var(--text-secondary);">No prefixes available</div>';
+        return;
+    }
+
+    list.innerHTML = machinePrefixes.map((prefix, idx) => `
+        <div class="list-item ${idx === selectedMachinePrefixIndex ? 'selected' : ''}" data-index="${idx}" data-prefix="${prefix}" style="padding: 12px 15px; border-bottom: 1px solid var(--border); cursor: pointer;">
+            <span style="font-weight: bold;">${prefix}</span>
+        </div>
+    `).join('');
+
+    list.querySelectorAll('.list-item').forEach(item => {
+        item.addEventListener('click', async () => {
+            const prefix = item.dataset.prefix;
+            createMachineFromPrefix(prefix);
+        });
+    });
+    
+    // Scroll selected item into view
+    const selectedItem = list.querySelector('.list-item.selected');
+    if (selectedItem) {
+        selectedItem.scrollIntoView({ block: 'nearest' });
+    }
+}
+
+async function createMachineFromPrefix(prefix) {
+    try {
+        const sessionName = `machine-${prefix}`;
+        
+        // Disconnect from current session if connected
+        if (sessionActive) {
+            send({ type: 'disconnect' });
+            sessionActive = false;
+            currentSessionName = null;
+        }
+
+        term.reset();
+        term.clear();
+        
+        // Ensure terminal is properly sized before starting
+        fitAddon.fit();
+        
+        // Small delay to ensure fit is applied
+        setTimeout(() => {
+            console.log(`Creating machine ${prefix} - cols: ${term.cols}, rows: ${term.rows}`);
+            
+            // Start a new session with the machine start && screen command
+            send({
+                type: 'start',
+                session: sessionName,
+                cmd: `machine ${prefix} start && machine ${prefix} screen`,
+                newSession: true,
+                rows: term.rows,
+                cols: term.cols
+            });
+            
+            createMachineDialog.classList.remove('active');
+            createMachineOverlay.classList.remove('active');
+        }, 100);
+    } catch (err) {
+        console.error('Failed to create machine:', err);
+    }
+}
+
+async function connectToMachine(machineName) {
+    try {
+        // The session name for this machine
+        const sessionName = `machine-${machineName}`;
+        
+        // Disconnect from current session if connected
+        if (sessionActive) {
+            send({ type: 'disconnect' });
+            sessionActive = false;
+            currentSessionName = null;
+        }
+
+        term.reset();
+        term.clear();
+        
+        // Ensure terminal is properly sized before starting
+        fitAddon.fit();
+        
+        // Small delay to ensure fit is applied
+        setTimeout(() => {
+            console.log(`Connecting to machine ${machineName} - cols: ${term.cols}, rows: ${term.rows}`);
+            
+            // Attach to existing session, or create with the screen command if it doesn't exist
+            send({
+                type: 'start',
+                session: sessionName,
+                cmd: `machine ${machineName} screen`,
+                newSession: false, // Try to attach first, create if doesn't exist
+                rows: term.rows,
+                cols: term.cols
+            });
+            
+            machinesDialog.classList.remove('active');
+            machinesOverlay.classList.remove('active');
+            machineSearchQuery = '';
+            selectedMachineIndex = 0;
+        }, 100);
+    } catch (err) {
+        console.error('Failed to connect to machine:', err);
+    }
+}
+
+function performMachineSearch(query) {
+    const searchQuery = query.toLowerCase();
+    document.getElementById('machine-search-query').textContent = query ? `"${query}"` : '';
+    
+    filteredMachines = machines.filter(machine =>
+        machine.name.toLowerCase().includes(searchQuery)
+    );
+    
+    selectedMachineIndex = Math.min(selectedMachineIndex, Math.max(0, filteredMachines.length - 1));
+    renderMachines(filteredMachines);
+}
+
+// Devenvs dialog
+const devenvsBtn = document.getElementById('devenvs-btn');
+const devenvsDialog = document.getElementById('devenvs-dialog');
+const devenvsOverlay = document.getElementById('devenvs-overlay');
+const closeDevenvs = document.getElementById('close-devenvs');
+const createDevenvBtn = document.getElementById('create-devenv-btn');
+const createDevenvDialog = document.getElementById('create-devenv-dialog');
+const createDevenvOverlay = document.getElementById('create-devenv-overlay');
+const closeCreateDevenv = document.getElementById('close-create-devenv');
+
+let devenvs = [];
+let filteredDevenvs = [];
+let selectedDevenvIndex = 0;
+let devenvSearchQuery = '';
+let devenvPrefixes = [];
+let selectedDevenvPrefixIndex = 0;
+let devenvPrefixSearchQuery = '';
+
+devenvsBtn?.addEventListener('click', () => {
+    devenvsDialog.classList.add('active');
+    devenvsOverlay.classList.add('active');
+    devenvSearchQuery = '';
+    selectedDevenvIndex = 0;
+    loadDevenvs();
+    // Pre-load prefixes for faster navigation
+    loadDevenvPrefixes();
+});
+
+closeDevenvs?.addEventListener('click', () => {
+    devenvsDialog.classList.remove('active');
+    devenvsOverlay.classList.remove('active');
+    devenvSearchQuery = '';
+    selectedDevenvIndex = 0;
+});
+
+devenvsOverlay?.addEventListener('click', () => {
+    devenvsDialog.classList.remove('active');
+    devenvsOverlay.classList.remove('active');
+    devenvSearchQuery = '';
+    selectedDevenvIndex = 0;
+});
+
+createDevenvBtn?.addEventListener('click', () => {
+    // Close parent dialog
+    devenvsDialog.classList.remove('active');
+    devenvsOverlay.classList.remove('active');
+    // Open create dialog
+    createDevenvDialog.classList.add('active');
+    createDevenvOverlay.classList.add('active');
+    // Render already-loaded prefixes
+    renderDevenvPrefixes(devenvPrefixes);
+    selectedDevenvPrefixIndex = 0;
+    devenvPrefixSearchQuery = '';
+});
+
+closeCreateDevenv?.addEventListener('click', () => {
+    createDevenvDialog.classList.remove('active');
+    createDevenvOverlay.classList.remove('active');
+});
+
+createDevenvOverlay?.addEventListener('click', () => {
+    createDevenvDialog.classList.remove('active');
+    createDevenvOverlay.classList.remove('active');
+});
+
+async function loadDevenvs() {
+    try {
+        const response = await fetch('/api/devenvs');
+        const data = await response.json();
+        devenvs = data.devenvs || [];
+        filteredDevenvs = devenvs;
+        renderDevenvs(filteredDevenvs);
+    } catch (err) {
+        console.error('Failed to load devenvs:', err);
+        document.getElementById('devenvs-list').innerHTML = '<div style="padding: 20px; text-align: center; color: var(--text-secondary);">Failed to load devenvs</div>';
+    }
+}
+
+async function loadDevenvPrefixes() {
+    try {
+        const response = await fetch('/api/devenvs/prefixes');
+        const data = await response.json();
+        const prefixes = data.prefixes || [];
+        renderDevenvPrefixes(prefixes);
+    } catch (err) {
+        console.error('Failed to load devenv prefixes:', err);
+        document.getElementById('devenv-prefixes-list').innerHTML = '<div style="padding: 20px; text-align: center; color: var(--text-secondary);">Failed to load prefixes</div>';
+    }
+}
+
+function renderDevenvs(devenvList) {
+    const list = document.getElementById('devenvs-list');
+    if (!devenvList || devenvList.length === 0) {
+        list.innerHTML = '<div style="padding: 20px; text-align: center; color: var(--text-secondary);">No running devenvs</div>';
+        return;
+    }
+
+    list.innerHTML = devenvList.map((devenv, idx) => `
+        <div class="list-item ${idx === selectedDevenvIndex ? 'selected' : ''}" data-index="${idx}" style="padding: 12px 15px; border-bottom: 1px solid var(--border); cursor: pointer; display: flex; justify-content: space-between; align-items: center;">
+            <div>
+                <span style="font-weight: bold;">${devenv.name}</span>
+                <span style="margin-left: 10px; color: var(--text-secondary); font-size: 0.9em;">[${devenv.status}]</span>
+            </div>
+        </div>
+    `).join('');
+
+    list.querySelectorAll('.list-item').forEach(item => {
+        item.addEventListener('click', () => {
+            const index = parseInt(item.dataset.index);
+            connectToDevenv(devenvList[index].name);
+        });
+    });
+}
+
+function renderDevenvPrefixes(prefixes) {
+    devenvPrefixes = prefixes || [];
+    const list = document.getElementById('devenv-prefixes-list');
+    if (devenvPrefixes.length === 0) {
+        list.innerHTML = '<div style="padding: 20px; text-align: center; color: var(--text-secondary);">No prefixes available</div>';
+        return;
+    }
+
+    list.innerHTML = devenvPrefixes.map((prefix, idx) => `
+        <div class="list-item ${idx === selectedDevenvPrefixIndex ? 'selected' : ''}" data-index="${idx}" data-prefix="${prefix}" style="padding: 12px 15px; border-bottom: 1px solid var(--border); cursor: pointer;">
+            <span style="font-weight: bold;">${prefix}</span>
+        </div>
+    `).join('');
+
+    list.querySelectorAll('.list-item').forEach(item => {
+        item.addEventListener('click', async () => {
+            const prefix = item.dataset.prefix;
+            createDevenvFromPrefix(prefix);
+        });
+    });
+    
+    // Scroll selected item into view
+    const selectedItem = list.querySelector('.list-item.selected');
+    if (selectedItem) {
+        selectedItem.scrollIntoView({ block: 'nearest' });
+    }
+}
+
+async function createDevenvFromPrefix(prefix) {
+    try {
+        const sessionName = `devenv-${prefix}`;
+        
+        // Disconnect from current session if connected
+        if (sessionActive) {
+            send({ type: 'disconnect' });
+            sessionActive = false;
+            currentSessionName = null;
+        }
+
+        term.reset();
+        term.clear();
+        
+        // Ensure terminal is properly sized before starting
+        fitAddon.fit();
+        
+        // Small delay to ensure fit is applied
+        setTimeout(() => {
+            console.log(`Creating devenv ${prefix} - cols: ${term.cols}, rows: ${term.rows}`);
+            
+            // Start a new session with the devenv start && screen command
+            send({
+                type: 'start',
+                session: sessionName,
+                cmd: `devenv ${prefix} start && devenv ${prefix} screen`,
+                newSession: true,
+                rows: term.rows,
+                cols: term.cols
+            });
+            
+            createDevenvDialog.classList.remove('active');
+            createDevenvOverlay.classList.remove('active');
+        }, 100);
+    } catch (err) {
+        console.error('Failed to create devenv:', err);
+    }
+}
+
+async function connectToDevenv(devenvName) {
+    try {
+        // The session name for this devenv
+        const sessionName = `devenv-${devenvName}`;
+        
+        // Disconnect from current session if connected
+        if (sessionActive) {
+            send({ type: 'disconnect' });
+            sessionActive = false;
+            currentSessionName = null;
+        }
+
+        term.reset();
+        term.clear();
+        
+        // Ensure terminal is properly sized before starting
+        fitAddon.fit();
+        
+        // Small delay to ensure fit is applied
+        setTimeout(() => {
+            console.log(`Connecting to devenv ${devenvName} - cols: ${term.cols}, rows: ${term.rows}`);
+            
+            // Attach to existing session, or create with the screen command if it doesn't exist
+            send({
+                type: 'start',
+                session: sessionName,
+                cmd: `devenv ${devenvName} screen`,
+                newSession: false, // Try to attach first, create if doesn't exist
+                rows: term.rows,
+                cols: term.cols
+            });
+            
+            devenvsDialog.classList.remove('active');
+            devenvsOverlay.classList.remove('active');
+            devenvSearchQuery = '';
+            selectedDevenvIndex = 0;
+        }, 100);
+    } catch (err) {
+        console.error('Failed to connect to devenv:', err);
+    }
+}
+
+function performDevenvSearch(query) {
+    const searchQuery = query.toLowerCase();
+    document.getElementById('devenv-search-query').textContent = query ? `"${query}"` : '';
+    
+    filteredDevenvs = devenvs.filter(devenv =>
+        devenv.name.toLowerCase().includes(searchQuery)
+    );
+    
+    selectedDevenvIndex = Math.min(selectedDevenvIndex, Math.max(0, filteredDevenvs.length - 1));
+    renderDevenvs(filteredDevenvs);
+}
+
+// Machines dialog keyboard navigation
+function handleMachinesKeydown(e) {
+    const machinesDialog = document.getElementById('machines-dialog');
+    if (!machinesDialog || !machinesDialog.classList.contains('active')) {
+        return false;
+    }
+
+    // ArrowDown = navigate down
+    if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        selectedMachineIndex = Math.min(selectedMachineIndex + 1, filteredMachines.length - 1);
+        renderMachines(filteredMachines);
+        return true;
+    }
+
+    // ArrowUp = navigate up
+    if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        selectedMachineIndex = Math.max(selectedMachineIndex - 1, 0);
+        renderMachines(filteredMachines);
+        return true;
+    }
+
+    // = or + = open create dialog
+    if (e.key === '=' || e.key === '+') {
+        e.preventDefault();
+        machinesDialog.classList.remove('active');
+        document.getElementById('machines-overlay').classList.remove('active');
+        document.getElementById('create-machine-dialog').classList.add('active');
+        document.getElementById('create-machine-overlay').classList.add('active');
+        // Render already-loaded prefixes
+        renderMachinePrefixes(machinePrefixes);
+        selectedMachinePrefixIndex = 0;
+        machinePrefixSearchQuery = '';
+        return true;
+    }
+
+    // Enter = connect to selected machine
+    if (e.key === 'Enter') {
+        e.preventDefault();
+        if (filteredMachines.length > 0 && selectedMachineIndex >= 0 && selectedMachineIndex < filteredMachines.length) {
+            const selectedMachine = filteredMachines[selectedMachineIndex];
+            connectToMachine(selectedMachine.name);
+        }
+        return true;
+    }
+
+    // ESC = close dialog
+    if (e.key === 'Escape') {
+        e.preventDefault();
+        machinesDialog.classList.remove('active');
+        document.getElementById('machines-overlay').classList.remove('active');
+        machineSearchQuery = '';
+        selectedMachineIndex = 0;
+        return true;
+    }
+
+    // Backspace = delete last character from search
+    if (e.key === 'Backspace') {
+        e.preventDefault();
+        machineSearchQuery = machineSearchQuery.slice(0, -1);
+        performMachineSearch(machineSearchQuery);
+        return true;
+    }
+
+    // Handle typing (single printable characters)
+    if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        e.preventDefault();
+        machineSearchQuery += e.key;
+        performMachineSearch(machineSearchQuery);
+        return true;
+    }
+
+    return false;
+}
+
+// Devenvs dialog keyboard navigation
+function handleDevenvsKeydown(e) {
+    const devenvsDialog = document.getElementById('devenvs-dialog');
+    if (!devenvsDialog || !devenvsDialog.classList.contains('active')) {
+        return false;
+    }
+
+    // ArrowDown = navigate down
+    if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        selectedDevenvIndex = Math.min(selectedDevenvIndex + 1, filteredDevenvs.length - 1);
+        renderDevenvs(filteredDevenvs);
+        return true;
+    }
+
+    // ArrowUp = navigate up
+    if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        selectedDevenvIndex = Math.max(selectedDevenvIndex - 1, 0);
+        renderDevenvs(filteredDevenvs);
+        return true;
+    }
+
+    // = or + = open create dialog
+    if (e.key === '=' || e.key === '+') {
+        e.preventDefault();
+        devenvsDialog.classList.remove('active');
+        document.getElementById('devenvs-overlay').classList.remove('active');
+        document.getElementById('create-devenv-dialog').classList.add('active');
+        document.getElementById('create-devenv-overlay').classList.add('active');
+        // Render already-loaded prefixes
+        renderDevenvPrefixes(devenvPrefixes);
+        selectedDevenvPrefixIndex = 0;
+        devenvPrefixSearchQuery = '';
+        return true;
+    }
+
+    // Enter = connect to selected devenv
+    if (e.key === 'Enter') {
+        e.preventDefault();
+        if (filteredDevenvs.length > 0 && selectedDevenvIndex >= 0 && selectedDevenvIndex < filteredDevenvs.length) {
+            const selectedDevenv = filteredDevenvs[selectedDevenvIndex];
+            connectToDevenv(selectedDevenv.name);
+        }
+        return true;
+    }
+
+    // ESC = close dialog
+    if (e.key === 'Escape') {
+        e.preventDefault();
+        devenvsDialog.classList.remove('active');
+        document.getElementById('devenvs-overlay').classList.remove('active');
+        devenvSearchQuery = '';
+        selectedDevenvIndex = 0;
+        return true;
+    }
+
+    // Backspace = delete last character from search
+    if (e.key === 'Backspace') {
+        e.preventDefault();
+        devenvSearchQuery = devenvSearchQuery.slice(0, -1);
+        performDevenvSearch(devenvSearchQuery);
+        return true;
+    }
+
+    // Handle typing (single printable characters)
+    if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        e.preventDefault();
+        devenvSearchQuery += e.key;
+        performDevenvSearch(devenvSearchQuery);
+        return true;
+    }
+
+    return false;
+}
+
+// Machine prefix dialog keyboard navigation
+function handleMachinePrefixKeydown(e) {
+    const createMachineDialog = document.getElementById('create-machine-dialog');
+    if (!createMachineDialog || !createMachineDialog.classList.contains('active')) {
+        return false;
+    }
+
+    // Get current filtered list
+    const searchQuery = machinePrefixSearchQuery.toLowerCase();
+    const filtered = machinePrefixes.filter(prefix =>
+        prefix.toLowerCase().includes(searchQuery)
+    );
+
+    // Handle navigation keys
+    if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        selectedMachinePrefixIndex = Math.min(selectedMachinePrefixIndex + 1, filtered.length - 1);
+        performMachinePrefixSearch(machinePrefixSearchQuery);
+        return true;
+    }
+
+    if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        selectedMachinePrefixIndex = Math.max(selectedMachinePrefixIndex - 1, 0);
+        performMachinePrefixSearch(machinePrefixSearchQuery);
+        return true;
+    }
+
+    if (e.key === 'Enter') {
+        e.preventDefault();
+        if (filtered.length > 0 && selectedMachinePrefixIndex >= 0 && selectedMachinePrefixIndex < filtered.length) {
+            const selectedPrefix = filtered[selectedMachinePrefixIndex];
+            createMachineFromPrefix(selectedPrefix);
+        }
+        return true;
+    }
+
+    if (e.key === 'Escape') {
+        e.preventDefault();
+        createMachineDialog.classList.remove('active');
+        document.getElementById('create-machine-overlay').classList.remove('active');
+        machinePrefixSearchQuery = '';
+        selectedMachinePrefixIndex = 0;
+        return true;
+    }
+
+    // Handle typing (single printable characters)
+    if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        e.preventDefault();
+        machinePrefixSearchQuery += e.key.toLowerCase();
+        performMachinePrefixSearch(machinePrefixSearchQuery);
+        return true;
+    }
+
+    if (e.key === 'Backspace') {
+        e.preventDefault();
+        machinePrefixSearchQuery = machinePrefixSearchQuery.slice(0, -1);
+        performMachinePrefixSearch(machinePrefixSearchQuery);
+        return true;
+    }
+
+    return false;
+}
+
+function performMachinePrefixSearch(query) {
+    const searchQuery = query.toLowerCase();
+    
+    const filtered = machinePrefixes.filter(prefix =>
+        prefix.toLowerCase().includes(searchQuery)
+    );
+    
+    selectedMachinePrefixIndex = 0;
+    
+    // Re-render with filtered list
+    const list = document.getElementById('machine-prefixes-list');
+    if (filtered.length === 0) {
+        list.innerHTML = `<div style="padding: 20px; text-align: center; color: var(--text-secondary);">No matches for "${query}"</div>`;
+        return;
+    }
+
+    list.innerHTML = filtered.map((prefix, idx) => {
+        const highlightedText = highlightMatches(prefix, query);
+        return `
+        <div class="list-item ${idx === selectedMachinePrefixIndex ? 'selected' : ''}" data-index="${idx}" data-prefix="${prefix}" style="padding: 12px 15px; border-bottom: 1px solid var(--border); cursor: pointer;">
+            <span style="font-weight: bold;">${highlightedText}</span>
+        </div>
+    `}).join('');
+
+    list.querySelectorAll('.list-item').forEach(item => {
+        item.addEventListener('click', async () => {
+            const prefix = item.dataset.prefix;
+            createMachineFromPrefix(prefix);
+        });
+    });
+    
+    // Scroll selected item into view
+    const selectedItem = list.querySelector('.list-item.selected');
+    if (selectedItem) {
+        selectedItem.scrollIntoView({ block: 'nearest' });
+    }
+}
+
+// Devenv prefix dialog keyboard navigation
+function handleDevenvPrefixKeydown(e) {
+    const createDevenvDialog = document.getElementById('create-devenv-dialog');
+    if (!createDevenvDialog || !createDevenvDialog.classList.contains('active')) {
+        return false;
+    }
+
+    // Get current filtered list
+    const searchQuery = devenvPrefixSearchQuery.toLowerCase();
+    const filtered = devenvPrefixes.filter(prefix =>
+        prefix.toLowerCase().includes(searchQuery)
+    );
+
+    // Handle navigation keys
+    if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        selectedDevenvPrefixIndex = Math.min(selectedDevenvPrefixIndex + 1, filtered.length - 1);
+        performDevenvPrefixSearch(devenvPrefixSearchQuery);
+        return true;
+    }
+
+    if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        selectedDevenvPrefixIndex = Math.max(selectedDevenvPrefixIndex - 1, 0);
+        performDevenvPrefixSearch(devenvPrefixSearchQuery);
+        return true;
+    }
+
+    if (e.key === 'Enter') {
+        e.preventDefault();
+        if (filtered.length > 0 && selectedDevenvPrefixIndex >= 0 && selectedDevenvPrefixIndex < filtered.length) {
+            const selectedPrefix = filtered[selectedDevenvPrefixIndex];
+            createDevenvFromPrefix(selectedPrefix);
+        }
+        return true;
+    }
+
+    if (e.key === 'Escape') {
+        e.preventDefault();
+        createDevenvDialog.classList.remove('active');
+        document.getElementById('create-devenv-overlay').classList.remove('active');
+        devenvPrefixSearchQuery = '';
+        selectedDevenvPrefixIndex = 0;
+        return true;
+    }
+
+    // Handle typing (single printable characters)
+    if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        e.preventDefault();
+        devenvPrefixSearchQuery += e.key.toLowerCase();
+        performDevenvPrefixSearch(devenvPrefixSearchQuery);
+        return true;
+    }
+
+    if (e.key === 'Backspace') {
+        e.preventDefault();
+        devenvPrefixSearchQuery = devenvPrefixSearchQuery.slice(0, -1);
+        performDevenvPrefixSearch(devenvPrefixSearchQuery);
+        return true;
+    }
+
+    return false;
+}
+
+function performDevenvPrefixSearch(query) {
+    const searchQuery = query.toLowerCase();
+    
+    const filtered = devenvPrefixes.filter(prefix =>
+        prefix.toLowerCase().includes(searchQuery)
+    );
+    
+    selectedDevenvPrefixIndex = 0;
+    
+    // Re-render with filtered list
+    const list = document.getElementById('devenv-prefixes-list');
+    if (filtered.length === 0) {
+        list.innerHTML = `<div style="padding: 20px; text-align: center; color: var(--text-secondary);">No matches for "${query}"</div>`;
+        return;
+    }
+
+    list.innerHTML = filtered.map((prefix, idx) => {
+        const highlightedText = highlightMatches(prefix, query);
+        return `
+        <div class="list-item ${idx === selectedDevenvPrefixIndex ? 'selected' : ''}" data-index="${idx}" data-prefix="${prefix}" style="padding: 12px 15px; border-bottom: 1px solid var(--border); cursor: pointer;">
+            <span style="font-weight: bold;">${highlightedText}</span>
+        </div>
+    `}).join('');
+
+    list.querySelectorAll('.list-item').forEach(item => {
+        item.addEventListener('click', async () => {
+            const prefix = item.dataset.prefix;
+            createDevenvFromPrefix(prefix);
+        });
+    });
+    
+    // Scroll selected item into view
+    const selectedItem = list.querySelector('.list-item.selected');
+    if (selectedItem) {
+        selectedItem.scrollIntoView({ block: 'nearest' });
+    }
 }
 
 // Session management

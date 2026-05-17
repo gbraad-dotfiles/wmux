@@ -136,6 +136,7 @@ type TmuxSession struct {
 	ws        *websocket.Conn
 	wsMu      *sync.Mutex // Shared mutex for websocket writes
 	sessionID string
+	command   string      // Optional command to execute in session
 }
 
 func (ts *TmuxSession) start(attach bool, rows, cols int) error {
@@ -155,10 +156,16 @@ func (ts *TmuxSession) start(attach bool, rows, cols int) error {
 		if check.Run() != nil {
 			// Session doesn't exist - create it
 			log.Printf("Session '%s' not found, creating it", ts.sessionID)
-			create := exec.Command("tmux", "new-session", "-d", "-s", ts.sessionID,
+			createArgs := []string{"new-session", "-d", "-s", ts.sessionID,
 				"-x", fmt.Sprintf("%d", cols),
-				"-y", fmt.Sprintf("%d", rows),
-			)
+				"-y", fmt.Sprintf("%d", rows)}
+			
+			// Add command if specified
+			if ts.command != "" {
+				createArgs = append(createArgs, ts.command)
+			}
+			
+			create := exec.Command("tmux", createArgs...)
 			if err := create.Run(); err != nil {
 				return fmt.Errorf("failed to create session '%s': %v", ts.sessionID, err)
 			}
@@ -169,6 +176,11 @@ func (ts *TmuxSession) start(attach bool, rows, cols int) error {
 			"new-session", "-s", ts.sessionID,
 			"-x", fmt.Sprintf("%d", cols),
 			"-y", fmt.Sprintf("%d", rows),
+		}
+		
+		// Add command if specified
+		if ts.command != "" {
+			args = append(args, ts.command)
 		}
 	}
 
@@ -871,6 +883,7 @@ func makeWebSocketHandler(defaultSession string) http.HandlerFunc {
 				ws:        ws,
 				wsMu:      &wsMu,
 				sessionID: sessionName,
+				command:   msg.Cmd,
 			}
 
 			rows := msg.Rows
@@ -1207,6 +1220,224 @@ func (l *singleUseListener) Addr() net.Addr {
 	return &net.TCPAddr{}
 }
 
+// Machine and Devenv types and handlers
+type MachineInstance struct {
+	Name   string `json:"name"`
+	Status string `json:"status"`
+}
+
+type DevenvInstance struct {
+	Name   string `json:"name"`
+	Status string `json:"status"`
+}
+
+// handleListMachines returns running machines
+func handleListMachines(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	// Execute machine_running_targets function from zsh
+	shell := os.Getenv("SHELL")
+	if shell == "" {
+		shell = "/bin/zsh"
+	}
+
+	cmd := exec.Command(shell, "-i", "-c", "source ~/.dotfiles/zsh/.zshrc.d/machine.zsh && machine_running_targets")
+	output, err := cmd.Output()
+	if err != nil {
+		log.Printf("Failed to get running machines: %v", err)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"machines": []MachineInstance{},
+		})
+		return
+	}
+
+	machines := make([]MachineInstance, 0)
+	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
+	for _, line := range lines {
+		if line == "" {
+			continue
+		}
+		parts := strings.Fields(line)
+		if len(parts) >= 1 {
+			name := parts[0]
+			status := "Running"
+			if len(parts) > 1 {
+				status = strings.Trim(strings.Join(parts[1:], " "), "[]")
+			}
+			machines = append(machines, MachineInstance{
+				Name:   name,
+				Status: status,
+			})
+		}
+	}
+
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"machines": machines,
+	})
+}
+
+// handleListMachinePrefixes returns available machine prefixes for creation
+func handleListMachinePrefixes(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	shell := os.Getenv("SHELL")
+	if shell == "" {
+		shell = "/bin/zsh"
+	}
+
+	cmd := exec.Command(shell, "-i", "-c", "source ~/.dotfiles/zsh/.zshrc.d/machine.zsh && machine_prefixes")
+	output, err := cmd.Output()
+	if err != nil {
+		log.Printf("Failed to get machine prefixes: %v", err)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"prefixes": []string{},
+		})
+		return
+	}
+
+	prefixes := make([]string, 0)
+	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line != "" {
+			prefixes = append(prefixes, line)
+		}
+	}
+
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"prefixes": prefixes,
+	})
+}
+
+// handleConnectMachine connects to a machine's screen session
+func handleConnectMachine(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	var req struct {
+		Name string `json:"name"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request", http.StatusBadRequest)
+		return
+	}
+
+	if req.Name == "" {
+		http.Error(w, "Machine name required", http.StatusBadRequest)
+		return
+	}
+
+	// Execute machine <name> screen command
+	// This will be handled by the existing tmux session connection
+	// We just need to return the command to execute
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":  "success",
+		"command": fmt.Sprintf("machine %s screen", req.Name),
+	})
+}
+
+// handleListDevenvs returns running devenvs
+func handleListDevenvs(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	shell := os.Getenv("SHELL")
+	if shell == "" {
+		shell = "/bin/zsh"
+	}
+
+	cmd := exec.Command(shell, "-i", "-c", "source ~/.dotfiles/zsh/.zshrc.d/devenv.zsh && devenv_running_targets")
+	output, err := cmd.Output()
+	if err != nil {
+		log.Printf("Failed to get running devenvs: %v", err)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"devenvs": []DevenvInstance{},
+		})
+		return
+	}
+
+	devenvs := make([]DevenvInstance, 0)
+	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
+	for _, line := range lines {
+		if line == "" {
+			continue
+		}
+		parts := strings.Fields(line)
+		if len(parts) >= 1 {
+			name := parts[0]
+			status := "Up"
+			if len(parts) > 1 {
+				status = strings.Trim(strings.Join(parts[1:], " "), "[]")
+			}
+			devenvs = append(devenvs, DevenvInstance{
+				Name:   name,
+				Status: status,
+			})
+		}
+	}
+
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"devenvs": devenvs,
+	})
+}
+
+// handleListDevenvPrefixes returns available devenv prefixes for creation
+func handleListDevenvPrefixes(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	shell := os.Getenv("SHELL")
+	if shell == "" {
+		shell = "/bin/zsh"
+	}
+
+	cmd := exec.Command(shell, "-i", "-c", "source ~/.dotfiles/zsh/.zshrc.d/devenv.zsh && devenv_prefixes")
+	output, err := cmd.Output()
+	if err != nil {
+		log.Printf("Failed to get devenv prefixes: %v", err)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"prefixes": []string{},
+		})
+		return
+	}
+
+	prefixes := make([]string, 0)
+	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line != "" {
+			prefixes = append(prefixes, line)
+		}
+	}
+
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"prefixes": prefixes,
+	})
+}
+
+// handleConnectDevenv connects to a devenv's screen session
+func handleConnectDevenv(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	var req struct {
+		Name string `json:"name"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request", http.StatusBadRequest)
+		return
+	}
+
+	if req.Name == "" {
+		http.Error(w, "Devenv name required", http.StatusBadRequest)
+		return
+	}
+
+	// Execute devenv <name> screen command
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":  "success",
+		"command": fmt.Sprintf("devenv %s screen", req.Name),
+	})
+}
+
 // readerConn wraps a net.Conn with a bufio.Reader
 func main() {
 	// Command line flags
@@ -1348,6 +1579,16 @@ func main() {
 
 	// Extract server IP from bindAddr for xpra URLs
 	serverHost := strings.Split(bindAddr, ":")[0]
+
+	// Machines API endpoints
+	http.HandleFunc("/api/machines", handleListMachines)
+	http.HandleFunc("/api/machines/prefixes", handleListMachinePrefixes)
+	http.HandleFunc("/api/machines/connect", handleConnectMachine)
+
+	// Devenvs API endpoints
+	http.HandleFunc("/api/devenvs", handleListDevenvs)
+	http.HandleFunc("/api/devenvs/prefixes", handleListDevenvPrefixes)
+	http.HandleFunc("/api/devenvs/connect", handleConnectDevenv)
 
 	// Apps functionality (if enabled)
 	if !*noApps {
