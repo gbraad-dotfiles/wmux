@@ -2367,14 +2367,16 @@ function renderMachines(machineList) {
         return;
     }
 
-    list.innerHTML = machineList.map((machine, idx) => `
+    list.innerHTML = machineList.map((machine, idx) => {
+        const highlightedName = highlightMatches(machine.name, machineSearchQuery);
+        return `
         <div class="list-item ${idx === selectedMachineIndex ? 'selected' : ''}" data-index="${idx}" style="padding: 12px 15px; border-bottom: 1px solid var(--border); cursor: pointer; display: flex; justify-content: space-between; align-items: center;">
             <div>
-                <span style="font-weight: bold;">${machine.name}</span>
+                <span style="font-weight: bold;">${highlightedName}</span>
                 <span style="margin-left: 10px; color: var(--text-secondary); font-size: 0.9em;">[${machine.status}]</span>
             </div>
         </div>
-    `).join('');
+    `}).join('');
 
     list.querySelectorAll('.list-item').forEach(item => {
         item.addEventListener('click', () => {
@@ -2382,6 +2384,12 @@ function renderMachines(machineList) {
             connectToMachine(machineList[index].name);
         });
     });
+    
+    // Scroll selected item into view
+    const selectedItem = list.querySelector('.list-item.selected');
+    if (selectedItem) {
+        selectedItem.scrollIntoView({ block: 'nearest' });
+    }
 }
 
 function renderMachinePrefixes(prefixes) {
@@ -2602,14 +2610,16 @@ function renderDevenvs(devenvList) {
         return;
     }
 
-    list.innerHTML = devenvList.map((devenv, idx) => `
+    list.innerHTML = devenvList.map((devenv, idx) => {
+        const highlightedName = highlightMatches(devenv.name, devenvSearchQuery);
+        return `
         <div class="list-item ${idx === selectedDevenvIndex ? 'selected' : ''}" data-index="${idx}" style="padding: 12px 15px; border-bottom: 1px solid var(--border); cursor: pointer; display: flex; justify-content: space-between; align-items: center;">
             <div>
-                <span style="font-weight: bold;">${devenv.name}</span>
+                <span style="font-weight: bold;">${highlightedName}</span>
                 <span style="margin-left: 10px; color: var(--text-secondary); font-size: 0.9em;">[${devenv.status}]</span>
             </div>
         </div>
-    `).join('');
+    `}).join('');
 
     list.querySelectorAll('.list-item').forEach(item => {
         item.addEventListener('click', () => {
@@ -2617,6 +2627,12 @@ function renderDevenvs(devenvList) {
             connectToDevenv(devenvList[index].name);
         });
     });
+    
+    // Scroll selected item into view
+    const selectedItem = list.querySelector('.list-item.selected');
+    if (selectedItem) {
+        selectedItem.scrollIntoView({ block: 'nearest' });
+    }
 }
 
 function renderDevenvPrefixes(prefixes) {
