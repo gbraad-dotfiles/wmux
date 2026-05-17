@@ -1803,7 +1803,7 @@ func handleDevenvExecPrefix(w http.ResponseWriter, r *http.Request) {
 		shell = "/bin/zsh"
 	}
 
-	cmd := exec.Command(shell, "-i", "-c", "source ~/.dotfiles/zsh/.zshrc.d/devenv.zsh && _devenv_runtime")
+	cmd := exec.Command(shell, "-i", "-c", "dotini devenv --get devenv.runtime")
 	output, err := cmd.Output()
 	runtime := "podman"
 	if err == nil {
