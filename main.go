@@ -1797,6 +1797,9 @@ func handleDevenvExecPrefix(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	/*
+	// These calls need to be cached as they are terribly slow
+
 	// Get runtime (podman, nerdctl, etc.)
 	shell := os.Getenv("SHELL")
 	if shell == "" {
@@ -1823,6 +1826,9 @@ func handleDevenvExecPrefix(w http.ResponseWriter, r *http.Request) {
 			user = "gbraad"
 		}
 	}
+	*/
+	runtime := "podman"
+	user := "gbraad"
 
 	// Container name is {name}sys
 	containerName := name + "sys"
