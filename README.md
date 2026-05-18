@@ -1,6 +1,9 @@
 # wmux - Web-based tmux Controller
 
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/gbraad-dotfiles/wmux)
+
 Control your tmux sessions from a web browser with full mouse support!
+
 
 ## Features
 
